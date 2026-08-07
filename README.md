@@ -92,3 +92,6 @@ Once connected, the AI will have access to the following tools:
 ### Pro-Tip for Zoo Code Users
 To make the AI use this memory automatically, add this to your **Custom Instructions** / `.cursorrules`:
 > *"Whenever I ask a question about the project context, ALWAYS use the `search_knowledge` tool first before answering."*
+---
+
+**Sponsored by [ISEEKAIGO](https://www.iseekaigo.com/)**
