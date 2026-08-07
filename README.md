@@ -1,3 +1,6 @@
+<img width="1984" height="576" alt="vnuw9pe8htgfwu87qgfbw" src="https://github.com/user-attachments/assets/f781a60d-11b9-4198-b80b-fca16a927184" />
+
+
 # Turbovec MCP Server (Long-Term Memory RAG for AI)
 
 Turbovec MCP Server is a **Model Context Protocol (MCP)** implementation that acts as a persistent, long-term memory (Semantic RAG) for AI coding assistants like **Zoo Code**, **Claude Desktop**, and **Cursor**. 
@@ -78,7 +81,7 @@ To use this server in your AI assistant, add it to your MCP configuration file (
 ```
 *(⚠️ **Important:** Make sure to use the absolute path to the Python executable inside your `venv` to ensure the server has access to the installed dependencies).*
 
-## 🛠️ Available MCP Tools
+##  Available MCP Tools
 Once connected, the AI will have access to the following tools:
 - `add_knowledge(title, content)`: Embeds and saves raw text into memory.
 - `add_file_knowledge(file_path)`: Reads a local file, chunks it, and saves it into memory.
