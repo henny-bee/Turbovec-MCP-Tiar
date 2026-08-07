@@ -1,0 +1,17 @@
+# Python Virtual Environments
+venv/
+env/
+.env
+
+# Python Cache
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Turbovec Local Data (Do not commit your personal memory!)
+metadata.json
+index.bin
+
+# OS Specific
+.DS_Store
+Thumbs.db

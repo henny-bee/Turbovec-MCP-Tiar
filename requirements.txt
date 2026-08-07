@@ -1,0 +1,5 @@
+fastmcp
+sentence-transformers
+numpy
+turbovec
+huggingface-hub
