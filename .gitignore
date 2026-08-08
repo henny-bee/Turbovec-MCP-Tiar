@@ -20,3 +20,5 @@ server.log
 # OS Specific
 .DS_Store
 Thumbs.db
+
+.playwright-mcp
