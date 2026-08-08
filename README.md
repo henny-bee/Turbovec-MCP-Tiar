@@ -1,24 +1,26 @@
 <img width="1984" height="576" alt="vnuw9pe8htgfwu87qgfbw" src="https://github.com/user-attachments/assets/f781a60d-11b9-4198-b80b-fca16a927184" />
 
-
 # Turbovec MCP Server (Long-Term Memory RAG for AI)
 
-Turbovec MCP Server is a **Model Context Protocol (MCP)** implementation that acts as a persistent, long-term memory (Semantic RAG) for AI coding assistants like **Zoo Code**, **Claude Desktop**, and **Cursor**. 
+Turbovec MCP Server is a **Model Context Protocol (MCP)** implementation that acts as a persistent, long-term memory (Semantic RAG) for AI coding assistants like **Zoo Code**, **Claude Desktop**, and **Cursor**.
 
 By running this local server, your AI assistant gains the ability to "read", "remember", and "semantically search" through vast amounts of code and documentation across different chat sessions, completely bypassing token limitations.
 
 ## The Problem it Solves
-1. **Context Window Limits**: When working on large projects, pasting hundreds of files into the AI chat will exceed token limits or cause the AI to hallucinate. 
+
+1. **Context Window Limits**: When working on large projects, pasting hundreds of files into the AI chat will exceed token limits or cause the AI to hallucinate.
 2. **AI Amnesia (Stateless Chats)**: Whenever you start a new chat tab, the AI forgets everything you discussed in the previous session (e.g., project architecture, specific coding guidelines).
-3. **Literal Search vs. Semantic Search**: Standard file search (CTRL+F) requires exact keyword matches. This server allows the AI to search by *meaning* (e.g., searching for "user authentication" will find `login_handler`).
+3. **Literal Search vs. Semantic Search**: Standard file search (CTRL+F) requires exact keyword matches. This server allows the AI to search by _meaning_ (e.g., searching for "user authentication" will find `login_handler`).
 
 ## Key Features & Advantages
+
 - **Persistent Local Memory**: Data is safely saved to your local disk (`metadata.json` and `index.bin`). It never expires and survives across system restarts.
 - **Intelligent Text Chunking**: Automatically breaks down large documents into overlapping semantic chunks (1000 chars) before embedding, ensuring context is never lost.
 - **Flawless MCP Stdio Communication**: Strictly intercepts and suppresses rogue C-level progress bars (like `tqdm` from `sentence-transformers`) that normally corrupt JSON-RPC streams, ensuring a stable connection.
 - **100% Local Privacy**: Runs entirely on your machine using the `all-MiniLM-L6-v2` embedding model. No data is sent to external cloud APIs for indexing.
 
 ## Architecture
+
 - **Protocol**: FastMCP (running over `stdio`).
 - **Embedding Model**: `sentence-transformers` (`all-MiniLM-L6-v2`) generating 384-dimensional vectors.
 - **Vector Database**: `turbovec` (TurboQuantIndex) for ultra-fast, locally persisted similarity search.
@@ -37,10 +39,7 @@ The Turbovec MCP Server acts as an invisible bridge between your AI client and a
 4. **Vector Database**: The MCP server interacts with the `turbovec` local vector database to embed the query, search for semantic matches, or store new text chunks.
 5. **Context Return & Generation**: The retrieved data is returned to the AI Client and passed back to the LLM. The LLM seamlessly incorporates this retrieved memory into its final context-aware response to the user.
 
-
 <img width="3600" height="1771" alt="627eriqdfvafasf" src="https://github.com/user-attachments/assets/dd4e4422-7d2f-4f5a-bb6b-a79a00fb9020" />
-
-
 
 ---
 
@@ -51,15 +50,17 @@ You can run Turbovec MCP Server locally via Python or using Docker.
 ### Option A: Local Python Setup
 
 1. **Clone the repository**:
+
    ```bash
    git clone https://github.com/henny-bee/Turbovec-MCP-Server.git
    cd turbovec-mcp-server
    ```
 
 2. **Create a Virtual Environment** (Recommended):
+
    ```bash
    python -m venv venv
-   
+
    # Windows
    .\venv\Scripts\activate
    # Mac/Linux
@@ -67,6 +68,7 @@ You can run Turbovec MCP Server locally via Python or using Docker.
    ```
 
 3. **Install Dependencies**:
+
    ```bash
    pip install -r requirements.txt
    ```
@@ -78,11 +80,12 @@ You can run Turbovec MCP Server locally via Python or using Docker.
    # Mac/Linux
    ./venv/bin/python main.py
    ```
-   *You should see a success message: `Turbovec MCP Server is successfully running`*
+   _You should see a success message: `Turbovec MCP Server is successfully running`_
 
 ### Option B: Docker Setup
 
 1. **Clone the repository**:
+
    ```bash
    git clone https://github.com/henny-bee/Turbovec-MCP-Server.git
    cd turbovec-mcp-server
@@ -102,6 +105,7 @@ Alternatively, you can build and run it directly using the provided `Dockerfile`
 The project uses `pytest` for testing to ensure the database and tools work correctly.
 
 1. **Install development dependencies**:
+
    ```bash
    pip install -r requirements-dev.txt
    ```
@@ -126,9 +130,7 @@ Add the following block to your `mcpServers` configuration:
   "mcpServers": {
     "turbovec-mcp": {
       "command": "python",
-      "args": [
-        "C:/absolute/path/to/turbovec-mcp-server/main.py"
-      ],
+      "args": ["C:/absolute/path/to/turbovec-mcp-server/main.py"],
       "env": {
         "PYTHONUNBUFFERED": "1"
       }
@@ -144,13 +146,15 @@ Add the following block to your `mcpServers` configuration:
 To ensure your AI assistant seamlessly and proactively uses the memory server without asking for permission, we highly recommend adding the following to your AI's **Custom Instructions** or **System Prompt**:
 
 ```text
-You are connected to a long-term memory system via the Turbovec MCP. 
-You must proactively use `search_knowledge` and `add_knowledge` automatically to save and retrieve important project context, architectural decisions, and code snippets. 
+You are connected to a long-term memory system via the Turbovec MCP.
+You must proactively use `search_knowledge` and `add_knowledge` automatically to save and retrieve important project context, architectural decisions, and code snippets.
 Do not ask for permission to save or search memory; execute these operations seamlessly in the background to ensure context is preserved across our sessions.
 ```
 
 ## Available MCP Tools
+
 Once connected, the AI will have access to the following tools:
+
 - `add_knowledge(title, content)`: Embeds and saves raw text into memory.
 - `add_file_knowledge(file_path)`: Reads a local file, chunks it, and saves it into memory.
 - `search_knowledge(query, top_k)`: Performs a semantic search to retrieve context from the database.
@@ -160,4 +164,8 @@ Once connected, the AI will have access to the following tools:
 
 ---
 
-**Sponsored by [ISEEKAIGO](https://www.iseekaigo.com/)**
+**Sponsored by**
+
+<a href="https://www.iseekaigo.com/">
+  <img src="logo-iseekaigo-line.png" alt="ISEEKAIGO" height="50">
+</a>

@@ -42,7 +42,6 @@ try:
             from tools import register_tools_and_prompts
 except Exception as e:
     logger.critical(f"Critical import error: {e}", exc_info=True)
-    print(f"Critical import error: {e}", file=sys.stderr)
     sys.exit(1)
 
 
@@ -67,11 +66,9 @@ def main():
         register_tools_and_prompts(mcp, db)
 
         logger.info("Turbovec MCP Server setup complete.")
-        print("Turbovec MCP Server is successfully running", file=sys.stderr)
 
     except Exception as e:
         logger.error(f"Error during server initialization: {e}", exc_info=True)
-        print(f"Error during server initialization: {e}", file=sys.stderr)
         sys.exit(1)
 
     # Run the server using stdio transport

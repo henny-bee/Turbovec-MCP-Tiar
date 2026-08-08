@@ -55,6 +55,15 @@ def test_chunk_text(vector_db):
     assert len(chunks[1]) == 700  # 1500 - (1000 - 200) = 700
 
 
+@pytest.mark.parametrize(
+    ("chunk_size", "overlap"),
+    [(0, 0), (-1, 0), (100, -1), (100, 100), (100, 101)],
+)
+def test_chunk_text_rejects_invalid_configuration(vector_db, chunk_size, overlap):
+    with pytest.raises(ValueError):
+        vector_db.chunk_text("content", chunk_size=chunk_size, overlap=overlap)
+
+
 def test_add_knowledge(vector_db):
     text = "This is a test document."
     title = "Test Doc"
@@ -78,6 +87,27 @@ def test_add_knowledge(vector_db):
         stored_metadata = json.load(f)
     assert len(stored_metadata) == 1
     assert stored_metadata[0]["title"] == title
+
+
+def test_add_knowledge_rejects_empty_input(vector_db):
+    assert vector_db.add_knowledge("", "content") == "Error: Title must not be empty."
+    assert vector_db.add_knowledge("title", "  ") == "Error: Content must not be empty."
+    assert vector_db.document_store == []
+
+
+def test_add_knowledge_does_not_mutate_index_when_encoding_fails(
+    vector_db, mock_sentence_transformer
+):
+    mock_sentence_transformer.encode.side_effect = [
+        np.ones(384, dtype=np.float32),
+        RuntimeError("encoding failed"),
+    ]
+
+    result = vector_db.add_knowledge("Doc", "A" * 1200)
+
+    assert result == "Error: Failed to process 'Doc'."
+    assert vector_db.document_store == []
+    assert len(vector_db.index) == 0
 
 
 def test_search_knowledge(vector_db, mock_sentence_transformer):
@@ -107,6 +137,36 @@ def test_search_knowledge(vector_db, mock_sentence_transformer):
     res2 = vector_db.search_knowledge("Give me banana", top_k=1)
     assert "Doc 2" in res2
     assert "Doc 1" not in res2
+
+
+def test_search_knowledge_validates_arguments(vector_db):
+    vector_db.add_knowledge("Doc", "Content")
+
+    assert vector_db.search_knowledge("", top_k=1) == (
+        "Error: Search query must not be empty."
+    )
+    assert vector_db.search_knowledge("Content", top_k=0) == (
+        "Error: top_k must be greater than zero."
+    )
+
+
+def test_search_knowledge_masks_deleted_entries(vector_db):
+    vector_db.add_knowledge("Deleted", "Content 1")
+    vector_db.add_knowledge("Active", "Content 2")
+    vector_db.delete_knowledge("Deleted")
+    real_index = vector_db.index
+    mock_index = MagicMock()
+    mock_index.search.side_effect = real_index.search
+    vector_db.index = mock_index
+
+    result = vector_db.search_knowledge("Content", top_k=10)
+
+    assert "Deleted" not in result
+    assert "Active" in result
+    assert mock_index.search.call_args.kwargs["k"] == 1
+    np.testing.assert_array_equal(
+        mock_index.search.call_args.kwargs["mask"], np.array([False, True])
+    )
 
 
 def test_delete_knowledge(vector_db):
@@ -152,6 +212,29 @@ def test_optimize_index(vector_db):
     # Check new IDs are updated
     assert vector_db.document_store[0]["id"] == 0
     assert vector_db.document_store[1]["id"] == 1
+
+
+def test_load_storage_rebuilds_mismatched_index(temp_files, mock_sentence_transformer):
+    metadata_file, index_file = temp_files
+    db = VectorDB(dimension=384, metadata_file=metadata_file, index_file=index_file)
+    db.add_knowledge("Doc", "Content")
+
+    empty_index = MagicMock()
+    empty_index.__len__.return_value = 0
+    with patch("vector_db.turbovec.TurboQuantIndex") as mock_index_type:
+        rebuilt_index = MagicMock()
+        rebuilt_index.__len__.return_value = 0
+        mock_index_type.return_value = rebuilt_index
+        empty_index.load.return_value = None
+        mock_index_type.side_effect = [empty_index, rebuilt_index]
+
+        loaded_db = VectorDB(
+            dimension=384, metadata_file=metadata_file, index_file=index_file
+        )
+
+    assert loaded_db.document_store[0]["title"] == "Doc"
+    rebuilt_index.add.assert_called_once()
+    rebuilt_index.write.assert_called_once_with(index_file)
 
 
 def test_clear_memory(vector_db):
