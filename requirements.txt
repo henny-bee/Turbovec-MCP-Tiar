@@ -3,5 +3,3 @@ sentence-transformers
 numpy
 turbovec
 huggingface-hub
-pytest
-pytest-asyncio

@@ -1,5 +1,6 @@
 # Python Virtual Environments
 venv/
+.venv/
 env/
 .env
 
@@ -13,6 +14,11 @@ metadata.json
 index.bin
 server.log
 
+# Editor Settings
+.vscode/
+
 # OS Specific
 .DS_Store
 Thumbs.db
+
+.playwright-mcp

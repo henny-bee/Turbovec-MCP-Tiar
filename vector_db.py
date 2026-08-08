@@ -36,6 +36,11 @@ class VectorDB:
         self, text: str, chunk_size: int = 1000, overlap: int = 200
     ) -> list[str]:
         """Intelligent text chunking with overlap."""
+        if chunk_size <= 0:
+            raise ValueError("chunk_size must be greater than zero")
+        if overlap < 0 or overlap >= chunk_size:
+            raise ValueError("overlap must be non-negative and smaller than chunk_size")
+
         chunks = []
         start = 0
         text_len = len(text)
@@ -44,8 +49,6 @@ class VectorDB:
             return []
 
         step = chunk_size - overlap
-        if step <= 0:
-            step = chunk_size
 
         while start < text_len:
             end = start + chunk_size
@@ -95,53 +98,68 @@ class VectorDB:
         if os.path.exists(self.index_file):
             try:
                 self.index.load(self.index_file)
+                if len(self.index) != len(self.document_store):
+                    raise ValueError(
+                        "Index and metadata contain different numbers of entries"
+                    )
                 loaded_index = True
                 logger.info(f"Loaded index from {self.index_file}")
             except Exception as e:
                 logger.error(
                     f"Failed to load index from {self.index_file}: {e}", exc_info=True
                 )
+                self.index = turbovec.TurboQuantIndex(self.dimension)
 
         # Fallback: rebuild index if we have metadata but failed to load index file
         if not loaded_index and self.document_store:
             logger.info("Rebuilding index from document store...")
-            for doc in self.document_store:
-                if doc is None or doc.get("deleted"):
-                    self.index.add(np.zeros((1, self.dimension), dtype=np.float32))
-                else:
-                    try:
+            try:
+                for doc in self.document_store:
+                    if doc is None or doc.get("deleted"):
+                        vector = np.zeros(self.dimension, dtype=np.float32)
+                    else:
                         vector = self.model.encode(doc["content"])
-                        self.index.add(np.array([vector]))
-                    except Exception as e:
-                        logger.error(
-                            f"Failed to encode document {doc.get('id')}: {e}",
-                            exc_info=True,
-                        )
-            logger.info("Finished rebuilding index.")
+                    self.index.add(np.asarray([vector], dtype=np.float32))
+                self.save_storage()
+                logger.info("Finished rebuilding index.")
+            except Exception:
+                self.index = turbovec.TurboQuantIndex(self.dimension)
+                logger.error("Failed to rebuild index from metadata", exc_info=True)
+                raise
 
     def add_knowledge(self, title: str, content: str) -> str:
+        if not title.strip():
+            return "Error: Title must not be empty."
+        if not content.strip():
+            return "Error: Content must not be empty."
+
         chunks = self.chunk_text(content, chunk_size=1000, overlap=200)
+        try:
+            vectors = [
+                np.asarray(self.model.encode(chunk), dtype=np.float32)
+                for chunk in chunks
+            ]
+        except Exception as e:
+            logger.error(f"Failed to encode '{title}': {e}", exc_info=True)
+            return f"Error: Failed to process '{title}'."
 
-        for i, chunk in enumerate(chunks):
-            try:
-                vector = self.model.encode(chunk)
-                self.index.add(np.array([vector]))
+        try:
+            self.index.add(np.asarray(vectors, dtype=np.float32))
+        except Exception as e:
+            logger.error(f"Failed to add '{title}' to the index: {e}", exc_info=True)
+            return f"Error: Failed to add '{title}' to the index."
 
-                doc_id = len(self.document_store)
-                self.document_store.append(
-                    {
-                        "id": doc_id,
-                        "title": title,
-                        "chunk_index": i,
-                        "content": chunk,
-                        "deleted": False,
-                    }
-                )
-            except Exception as e:
-                logger.error(
-                    f"Failed to add chunk {i} of '{title}': {e}", exc_info=True
-                )
-                return f"Error: Failed to process chunk {i} of '{title}'."
+        first_doc_id = len(self.document_store)
+        self.document_store.extend(
+            {
+                "id": first_doc_id + i,
+                "title": title,
+                "chunk_index": i,
+                "content": chunk,
+                "deleted": False,
+            }
+            for i, chunk in enumerate(chunks)
+        )
 
         self.save_storage()
         return (
@@ -224,18 +242,27 @@ class VectorDB:
             return f"Optimization failed: {e}"
 
     def search_knowledge(self, query: str, top_k: int = 3) -> str:
-        valid_docs = [d for d in self.document_store if d and not d.get("deleted")]
-        if not valid_docs:
+        if not query.strip():
+            return "Error: Search query must not be empty."
+        if top_k <= 0:
+            return "Error: top_k must be greater than zero."
+
+        valid_mask = np.asarray(
+            [bool(doc and not doc.get("deleted")) for doc in self.document_store],
+            dtype=bool,
+        )
+        valid_count = int(valid_mask.sum())
+        if valid_count == 0:
             return "Database is still empty. Please add knowledge first using the add_knowledge tool."
 
         try:
             query_vector = self.model.encode(query)
-
-            search_k = min(top_k * 3, len(self.document_store))
-            if search_k == 0:
-                search_k = 1
-
-            distances, indices = self.index.search(np.array([query_vector]), k=search_k)
+            search_k = min(top_k, valid_count)
+            distances, indices = self.index.search(
+                np.asarray([query_vector], dtype=np.float32),
+                k=search_k,
+                mask=valid_mask,
+            )
 
             results = []
             for i, doc_idx in enumerate(indices[0]):

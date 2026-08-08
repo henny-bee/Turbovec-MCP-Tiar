@@ -2,10 +2,11 @@ services:
   turbovec-server:
     build: .
     volumes:
-      - turbovec_data:/app
+      - turbovec_data:/app/data
+    working_dir: /app/data
+    entrypoint: ["python", "/app/main.py"]
     # Run interactive to support stdio communication if run manually
     stdin_open: true
-    tty: true
 
 volumes:
   turbovec_data:
