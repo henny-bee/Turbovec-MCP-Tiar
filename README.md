@@ -27,6 +27,23 @@ By running this local server, your AI assistant gains the ability to "read", "re
 
 ---
 
+## How It Works: AI & MCP Interaction Flow
+
+The Turbovec MCP Server acts as an invisible bridge between your AI client and a persistent local memory database. Here is the step-by-step logic of how they interact:
+
+1. **User Prompt**: The user asks a question or assigns a task in their AI Client (e.g., Zoo Code, Claude Desktop, Cursor).
+2. **LLM Tool Call**: The LLM evaluates the prompt and determines it needs past context or codebase knowledge, triggering an MCP tool (like `search_knowledge` or `add_knowledge`).
+3. **MCP Execution**: The AI Client forwards this tool request to the Turbovec MCP Server running locally via the standardized JSON-RPC protocol over `stdio`.
+4. **Vector Database**: The MCP server interacts with the `turbovec` local vector database to embed the query, search for semantic matches, or store new text chunks.
+5. **Context Return & Generation**: The retrieved data is returned to the AI Client and passed back to the LLM. The LLM seamlessly incorporates this retrieved memory into its final context-aware response to the user.
+
+
+<img width="3600" height="1771" alt="627eriqdfvafasf" src="https://github.com/user-attachments/assets/dd4e4422-7d2f-4f5a-bb6b-a79a00fb9020" />
+
+
+
+---
+
 ## Installation
 
 You can run Turbovec MCP Server locally via Python or using Docker.
