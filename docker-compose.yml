@@ -1,0 +1,11 @@
+services:
+  turbovec-server:
+    build: .
+    volumes:
+      - turbovec_data:/app
+    # Run interactive to support stdio communication if run manually
+    stdin_open: true
+    tty: true
+
+volumes:
+  turbovec_data:
