@@ -1,6 +1,6 @@
 <img width="1984" height="576" alt="vnuw9pe8htgfwu87qgfbw" src="https://github.com/user-attachments/assets/f781a60d-11b9-4198-b80b-fca16a927184" />
 
-# Turbovec MCP Server (Long-Term Memory RAG for AI)
+# Turbovec MCP (Long-Term Memory RAG for AI)
 
 Turbovec MCP Server is a **Model Context Protocol (MCP)** implementation that acts as a persistent, long-term memory (Semantic RAG) for AI coding assistants like **Zoo Code**, **Claude Desktop**, and **Cursor**.
 
