@@ -3,16 +3,16 @@ import sys
 import warnings
 import logging
 
+
 def setup_logging():
     """Configure file-based logging."""
     logging.basicConfig(
         level=logging.INFO,
-        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-        handlers=[
-            logging.FileHandler("server.log", encoding="utf-8")
-        ]
+        format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+        handlers=[logging.FileHandler("server.log", encoding="utf-8")],
     )
     return logging.getLogger(__name__)
+
 
 # Initialize logging before any imports or redirections
 logger = setup_logging()
@@ -30,11 +30,13 @@ os.environ["DISABLE_TQDM"] = "1"
 try:
     from mcp.server.fastmcp import FastMCP
     import huggingface_hub.utils as hf_utils
+
     hf_utils.disable_progress_bars()
-    
+
     # Import our separated modules, suppressing their stdout/stderr output
     import contextlib
-    with open(os.devnull, 'w') as fnull:
+
+    with open(os.devnull, "w") as fnull:
         with contextlib.redirect_stdout(fnull), contextlib.redirect_stderr(fnull):
             from vector_db import VectorDB
             from tools import register_tools_and_prompts
@@ -42,6 +44,7 @@ except Exception as e:
     logger.critical(f"Critical import error: {e}", exc_info=True)
     print(f"Critical import error: {e}", file=sys.stderr)
     sys.exit(1)
+
 
 def main():
     logger.info("Starting Turbovec MCP Server...")
@@ -54,7 +57,8 @@ def main():
         # This will also load the SentenceTransformer model
         logger.info("Initializing VectorDB...")
         import contextlib
-        with open(os.devnull, 'w') as fnull:
+
+        with open(os.devnull, "w") as fnull:
             with contextlib.redirect_stdout(fnull), contextlib.redirect_stderr(fnull):
                 db = VectorDB()
 
@@ -72,7 +76,8 @@ def main():
 
     # Run the server using stdio transport
     logger.info("Starting MCP stdio transport...")
-    mcp.run(transport='stdio')
+    mcp.run(transport="stdio")
+
 
 if __name__ == "__main__":
     main()

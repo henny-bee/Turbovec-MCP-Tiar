@@ -5,13 +5,14 @@ from vector_db import VectorDB
 
 logger = logging.getLogger(__name__)
 
+
 def register_tools_and_prompts(mcp: FastMCP, db: VectorDB):
     logger.info("Registering MCP tools and prompts")
 
     @mcp.tool()
     def add_knowledge(title: str, content: str) -> str:
         """
-        Use this tool to insert documentation, code, or information 
+        Use this tool to insert documentation, code, or information
         into the Turbovec vector memory using chunking.
         """
         logger.info(f"Tool 'add_knowledge' called with title: {title}")
@@ -30,7 +31,7 @@ def register_tools_and_prompts(mcp: FastMCP, db: VectorDB):
         except Exception as e:
             logger.error(f"Error reading file '{file_path}': {e}", exc_info=True)
             return f"Error reading file '{file_path}': {e}"
-            
+
         title = os.path.basename(file_path)
         return db.add_knowledge(title, content)
 
@@ -57,7 +58,9 @@ def register_tools_and_prompts(mcp: FastMCP, db: VectorDB):
         """
         Use this tool to search for specific information from memory based on semantic meaning (Semantic Search).
         """
-        logger.info(f"Tool 'search_knowledge' called with query: '{query}', top_k: {top_k}")
+        logger.info(
+            f"Tool 'search_knowledge' called with query: '{query}', top_k: {top_k}"
+        )
         return db.search_knowledge(query, top_k)
 
     # MCP Prompts
