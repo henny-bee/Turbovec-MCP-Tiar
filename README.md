@@ -23,10 +23,15 @@ By running this local server, your AI assistant gains the ability to "read", "re
 - **Embedding Model**: `sentence-transformers` (`all-MiniLM-L6-v2`) generating 384-dimensional vectors.
 - **Vector Database**: `turbovec` (TurboQuantIndex) for ultra-fast, locally persisted similarity search.
 - **Storage Layer**: Local JSON mapping for metadata, allowing automated fallback and index rebuilding if the `.bin` file is lost.
+- **Modular Codebase**: The project is cleanly separated into `main.py` (entry point), `vector_db.py` (database logic), and `tools.py` (MCP tool definitions).
 
 ---
 
 ## Installation
+
+You can run Turbovec MCP Server locally via Python or using Docker.
+
+### Option A: Local Python Setup
 
 1. **Clone the repository**:
    ```bash
@@ -52,46 +57,90 @@ By running this local server, your AI assistant gains the ability to "read", "re
 4. **Verify it Runs**:
    ```bash
    # Windows
-   .\venv\Scripts\python.exe server.py
+   .\venv\Scripts\python.exe main.py
    # Mac/Linux
-   ./venv/bin/python server.py
+   ./venv/bin/python main.py
    ```
    *You should see a success message: `Turbovec MCP Server is successfully running`*
 
+### Option B: Docker Setup
+
+1. **Clone the repository**:
+   ```bash
+   git clone https://github.com/henny-bee/Turbovec-MCP-Server.git
+   cd turbovec-mcp-server
+   ```
+
+2. **Run with Docker Compose**:
+   ```bash
+   docker-compose up -d
+   ```
+
+Alternatively, you can build and run it directly using the provided `Dockerfile`.
+
 ---
 
-## Integration 
+## Testing
 
-To use this server in your AI assistant, add it to your MCP configuration file (usually found in Settings > MCP Servers, or `mcp.json`).
+The project uses `pytest` for testing to ensure the database and tools work correctly.
 
-**Example Configuration:**
+1. **Install development dependencies**:
+   ```bash
+   pip install -r requirements-dev.txt
+   ```
+
+2. **Run the tests**:
+   ```bash
+   pytest tests/
+   ```
+
+---
+
+## Zoo Code / AI Editor Integration
+
+To use this server in your AI coding assistant (like **Zoo Code**, **Cursor**, or **Claude Desktop**), add it to your MCP configuration settings (usually found in Settings > MCP Servers, or `mcp_settings.json`).
+
+### Configuration
+
+Add the following block to your `mcpServers` configuration:
+
 ```json
 {
   "mcpServers": {
     "turbovec-mcp": {
-      "command": "C:/path/to/your/turbovec-mcp-server/venv/Scripts/python.exe",
+      "command": "python",
       "args": [
-        "C:/path/to/your/turbovec-mcp-server/server.py"
+        "C:/absolute/path/to/turbovec-mcp-server/main.py"
       ],
-      "disabled": false,
-      "alwaysAllow": []
+      "env": {
+        "PYTHONUNBUFFERED": "1"
+      }
     }
   }
 }
 ```
-*(⚠️ **Important:** Make sure to use the absolute path to the Python executable inside your `venv` to ensure the server has access to the installed dependencies).*
 
-##  Available MCP Tools
+> **Troubleshooting Tip:** If you encounter a `ModuleNotFoundError` (e.g., missing `numpy` or `turbovec`), it means the editor is using the system Python instead of the virtual environment. To fix this, change `"command": "python"` to the absolute path of your virtual environment's Python executable (e.g., `"C:/path/to/turbovec-mcp-server/venv/Scripts/python.exe"` on Windows, or `"/path/to/venv/bin/python"` on Mac/Linux).
+
+### Custom Instructions (Recommended)
+
+To ensure your AI assistant seamlessly and proactively uses the memory server without asking for permission, we highly recommend adding the following to your AI's **Custom Instructions** or **System Prompt**:
+
+```text
+You are connected to a long-term memory system via the Turbovec MCP. 
+You must proactively use `search_knowledge` and `add_knowledge` automatically to save and retrieve important project context, architectural decisions, and code snippets. 
+Do not ask for permission to save or search memory; execute these operations seamlessly in the background to ensure context is preserved across our sessions.
+```
+
+## Available MCP Tools
 Once connected, the AI will have access to the following tools:
 - `add_knowledge(title, content)`: Embeds and saves raw text into memory.
 - `add_file_knowledge(file_path)`: Reads a local file, chunks it, and saves it into memory.
 - `search_knowledge(query, top_k)`: Performs a semantic search to retrieve context from the database.
 - `delete_knowledge(title_or_id)`: Removes a specific piece of knowledge from the database.
+- `optimize_memory()`: Performs hard-deletion and garbage collection of the vector database to optimize memory usage.
 - `clear_memory()`: Completely wipes the local database and vector index.
 
-### Pro-Tip for Zoo Code Users
-To make the AI use this memory automatically, add this to your **Custom Instructions** / `.cursorrules`:
-> *"Whenever I ask a question about the project context, ALWAYS use the `search_knowledge` tool first before answering."*
 ---
 
 **Sponsored by [ISEEKAIGO](https://www.iseekaigo.com/)**

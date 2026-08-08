@@ -11,6 +11,7 @@ __pycache__/
 # Turbovec Local Data (Do not commit your personal memory!)
 metadata.json
 index.bin
+server.log
 
 # OS Specific
 .DS_Store
