@@ -19,7 +19,7 @@ class VectorDB:
         self,
         dimension: int = 384,
         metadata_file: str = "metadata.json",
-        index_file: str = "index.bin",
+        index_file: str = "index.tvim",
     ):
         self.dimension = dimension
         self.metadata_file = metadata_file
@@ -27,8 +27,9 @@ class VectorDB:
 
         logger.info("Initializing SentenceTransformer model: all-MiniLM-L6-v2")
         self.model = SentenceTransformer("all-MiniLM-L6-v2")
-        self.index = turbovec.TurboQuantIndex(self.dimension)
-        self.document_store = []
+        self.index = turbovec.IdMapIndex(self.dimension)
+        self.document_store = {}
+        self.next_id = 0
 
         self.load_storage()
 
@@ -63,7 +64,11 @@ class VectorDB:
         """Saves metadata to JSON and attempts to save turbovec index."""
         try:
             with open(self.metadata_file, "w", encoding="utf-8") as f:
-                json.dump(self.document_store, f, indent=2)
+                json.dump(
+                    {"next_id": self.next_id, "documents": self.document_store},
+                    f,
+                    indent=2,
+                )
             logger.info(f"Metadata saved to {self.metadata_file}")
         except Exception as e:
             logger.error(
@@ -83,7 +88,22 @@ class VectorDB:
         if os.path.exists(self.metadata_file):
             try:
                 with open(self.metadata_file, "r", encoding="utf-8") as f:
-                    self.document_store = json.load(f)
+                    data = json.load(f)
+                    if isinstance(data, dict) and "documents" in data:
+                        self.document_store = {
+                            int(k): v for k, v in data["documents"].items()
+                        }
+                        self.next_id = data.get(
+                            "next_id", max(self.document_store.keys(), default=-1) + 1
+                        )
+                    elif isinstance(data, list):
+
+                        self.document_store = {
+                            doc["id"]: doc
+                            for doc in data
+                            if doc and not doc.get("deleted")
+                        }
+                        self.next_id = max(self.document_store.keys(), default=-1) + 1
                 logger.info(
                     f"Loaded {len(self.document_store)} documents from {self.metadata_file}"
                 )
@@ -92,14 +112,16 @@ class VectorDB:
                     f"Failed to load metadata from {self.metadata_file}: {e}",
                     exc_info=True,
                 )
-                self.document_store = []
+                self.document_store = {}
+                self.next_id = 0
 
         loaded_index = False
         if os.path.exists(self.index_file):
             try:
-                self.index.load(self.index_file)
+                self.index = turbovec.IdMapIndex.load(self.index_file)
+
                 if len(self.index) != len(self.document_store):
-                    raise ValueError(
+                    logger.warning(
                         "Index and metadata contain different numbers of entries"
                     )
                 loaded_index = True
@@ -108,22 +130,27 @@ class VectorDB:
                 logger.error(
                     f"Failed to load index from {self.index_file}: {e}", exc_info=True
                 )
-                self.index = turbovec.TurboQuantIndex(self.dimension)
+                self.index = turbovec.IdMapIndex(self.dimension)
 
         # Fallback: rebuild index if we have metadata but failed to load index file
         if not loaded_index and self.document_store:
             logger.info("Rebuilding index from document store...")
             try:
-                for doc in self.document_store:
-                    if doc is None or doc.get("deleted"):
-                        vector = np.zeros(self.dimension, dtype=np.float32)
-                    else:
-                        vector = self.model.encode(doc["content"])
-                    self.index.add(np.asarray([vector], dtype=np.float32))
+                ids = []
+                vectors = []
+                for doc_id, doc in self.document_store.items():
+                    ids.append(doc_id)
+                    vectors.append(self.model.encode(doc["content"]))
+
+                if ids:
+                    self.index.add_with_ids(
+                        np.asarray(vectors, dtype=np.float32),
+                        np.asarray(ids, dtype=np.uint64),
+                    )
                 self.save_storage()
                 logger.info("Finished rebuilding index.")
             except Exception:
-                self.index = turbovec.TurboQuantIndex(self.dimension)
+                self.index = turbovec.IdMapIndex(self.dimension)
                 logger.error("Failed to rebuild index from metadata", exc_info=True)
                 raise
 
@@ -134,6 +161,9 @@ class VectorDB:
             return "Error: Content must not be empty."
 
         chunks = self.chunk_text(content, chunk_size=1000, overlap=200)
+        if not chunks:
+            return "Error: No chunks generated from content."
+
         try:
             vectors = [
                 np.asarray(self.model.encode(chunk), dtype=np.float32)
@@ -143,24 +173,25 @@ class VectorDB:
             logger.error(f"Failed to encode '{title}': {e}", exc_info=True)
             return f"Error: Failed to process '{title}'."
 
+        start_id = self.next_id
+        ids = np.arange(start_id, start_id + len(chunks), dtype=np.uint64)
+
         try:
-            self.index.add(np.asarray(vectors, dtype=np.float32))
+            self.index.add_with_ids(np.asarray(vectors, dtype=np.float32), ids)
         except Exception as e:
             logger.error(f"Failed to add '{title}' to the index: {e}", exc_info=True)
             return f"Error: Failed to add '{title}' to the index."
 
-        first_doc_id = len(self.document_store)
-        self.document_store.extend(
-            {
-                "id": first_doc_id + i,
+        for i, chunk in enumerate(chunks):
+            doc_id = int(ids[i])
+            self.document_store[doc_id] = {
+                "id": doc_id,
                 "title": title,
                 "chunk_index": i,
                 "content": chunk,
-                "deleted": False,
             }
-            for i, chunk in enumerate(chunks)
-        )
 
+        self.next_id += len(chunks)
         self.save_storage()
         return (
             f"Successfully added '{title}' ({len(chunks)} chunks) into Turbovec memory."
@@ -168,12 +199,15 @@ class VectorDB:
 
     def delete_knowledge(self, title_or_id: str) -> str:
         deleted_count = 0
+        to_delete = []
 
-        for doc in self.document_store:
-            if doc is None or doc.get("deleted"):
-                continue
+        for doc_id, doc in self.document_store.items():
             if str(doc["id"]) == title_or_id or doc["title"] == title_or_id:
-                doc["deleted"] = True
+                to_delete.append(doc_id)
+
+        for doc_id in to_delete:
+            if self.index.remove(doc_id):
+                del self.document_store[doc_id]
                 deleted_count += 1
 
         if deleted_count > 0:
@@ -187,8 +221,9 @@ class VectorDB:
         return f"No document found matching '{title_or_id}'."
 
     def clear_memory(self) -> str:
-        self.document_store = []
-        self.index = turbovec.TurboQuantIndex(self.dimension)
+        self.document_store = {}
+        self.next_id = 0
+        self.index = turbovec.IdMapIndex(self.dimension)
 
         for f in [self.metadata_file, self.index_file]:
             if os.path.exists(f):
@@ -202,44 +237,14 @@ class VectorDB:
 
     def optimize_index(self) -> str:
         """Permanently removes soft-deleted chunks and rebuilds the index."""
+        # With IdMapIndex, we actually delete from the index immediately in delete_knowledge.
+        # So optimize_index doesn't strictly need to rebuild to remove deleted items.
+        # We just sync it to disk.
         logger.info("Starting index optimization (garbage collection)...")
-
-        valid_docs = [
-            doc
-            for doc in self.document_store
-            if doc is not None and not doc.get("deleted")
-        ]
-        old_count = len(self.document_store)
-
-        if len(valid_docs) == old_count:
-            logger.info("No deleted documents found to optimize.")
-            return "No deleted documents found. Index is already optimal."
-
-        new_index = turbovec.TurboQuantIndex(self.dimension)
-        new_store = []
-
-        try:
-            for doc in valid_docs:
-                vector = self.model.encode(doc["content"])
-                new_index.add(np.array([vector]))
-
-                # Update document ID to match new index position
-                new_doc = doc.copy()
-                new_doc["id"] = len(new_store)
-                new_store.append(new_doc)
-
-            self.index = new_index
-            self.document_store = new_store
-
-            self.save_storage()
-
-            removed_count = old_count - len(self.document_store)
-            msg = f"Optimization complete. Removed {removed_count} deleted chunks. Current size: {len(self.document_store)} chunks."
-            logger.info(msg)
-            return msg
-        except Exception as e:
-            logger.error(f"Optimization failed: {e}", exc_info=True)
-            return f"Optimization failed: {e}"
+        self.save_storage()
+        return (
+            f"Optimization complete. Current size: {len(self.document_store)} chunks."
+        )
 
     def search_knowledge(self, query: str, top_k: int = 3) -> str:
         if not query.strip():
@@ -247,36 +252,31 @@ class VectorDB:
         if top_k <= 0:
             return "Error: top_k must be greater than zero."
 
-        valid_mask = np.asarray(
-            [bool(doc and not doc.get("deleted")) for doc in self.document_store],
-            dtype=bool,
-        )
-        valid_count = int(valid_mask.sum())
+        valid_count = len(self.document_store)
         if valid_count == 0:
             return "Database is still empty. Please add knowledge first using the add_knowledge tool."
 
         try:
             query_vector = self.model.encode(query)
             search_k = min(top_k, valid_count)
-            distances, indices = self.index.search(
+            distances, ids = self.index.search(
                 np.asarray([query_vector], dtype=np.float32),
                 k=search_k,
-                mask=valid_mask,
             )
 
             results = []
-            for i, doc_idx in enumerate(indices[0]):
-                if 0 <= doc_idx < len(self.document_store):
-                    doc = self.document_store[doc_idx]
-                    if doc and not doc.get("deleted"):
-                        score = distances[0][i]
-                        results.append(
-                            f"📄 **Source**: {doc['title']} (ID: {doc['id']})\n"
-                            f"🎯 **Score**: {score:.4f}\n"
-                            f"📝 **Snippet**:\n{doc['content']}"
-                        )
-                        if len(results) >= top_k:
-                            break
+            for i, doc_id in enumerate(ids[0]):
+                doc_id = int(doc_id)
+                if doc_id in self.document_store:
+                    doc = self.document_store[doc_id]
+                    score = distances[0][i]
+                    results.append(
+                        f"📄 **Source**: {doc['title']} (ID: {doc['id']})\n"
+                        f"🎯 **Score**: {score:.4f}\n"
+                        f"📝 **Snippet**:\n{doc['content']}"
+                    )
+                    if len(results) >= top_k:
+                        break
 
             if not results:
                 return "No relevant information found."
