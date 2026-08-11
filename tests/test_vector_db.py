@@ -10,7 +10,7 @@ from vector_db import VectorDB
 @pytest.fixture
 def temp_files(tmp_path):
     metadata_file = tmp_path / "metadata.json"
-    index_file = tmp_path / "index.bin"
+    index_file = tmp_path / "index.tvim"
     return str(metadata_file), str(index_file)
 
 
@@ -42,7 +42,7 @@ def test_initialization(vector_db, temp_files):
     assert vector_db.dimension == 384
     assert vector_db.metadata_file == metadata_file
     assert vector_db.index_file == index_file
-    assert vector_db.document_store == []
+    assert vector_db.document_store == {}
     assert vector_db.model is not None
     assert vector_db.index is not None
 
@@ -75,7 +75,7 @@ def test_add_knowledge(vector_db):
     doc = vector_db.document_store[0]
     assert doc["title"] == title
     assert doc["content"] == text
-    assert doc["deleted"] is False
+    assert "deleted" not in doc
     assert doc["id"] == 0
 
     # Check if files were created
@@ -85,14 +85,14 @@ def test_add_knowledge(vector_db):
     # Verify that metadata can be loaded
     with open(vector_db.metadata_file, "r") as f:
         stored_metadata = json.load(f)
-    assert len(stored_metadata) == 1
-    assert stored_metadata[0]["title"] == title
+    assert len(stored_metadata["documents"]) == 1
+    assert stored_metadata["documents"]["0"]["title"] == title
 
 
 def test_add_knowledge_rejects_empty_input(vector_db):
     assert vector_db.add_knowledge("", "content") == "Error: Title must not be empty."
     assert vector_db.add_knowledge("title", "  ") == "Error: Content must not be empty."
-    assert vector_db.document_store == []
+    assert vector_db.document_store == {}
 
 
 def test_add_knowledge_does_not_mutate_index_when_encoding_fails(
@@ -106,7 +106,7 @@ def test_add_knowledge_does_not_mutate_index_when_encoding_fails(
     result = vector_db.add_knowledge("Doc", "A" * 1200)
 
     assert result == "Error: Failed to process 'Doc'."
-    assert vector_db.document_store == []
+    assert vector_db.document_store == {}
     assert len(vector_db.index) == 0
 
 
@@ -150,45 +150,19 @@ def test_search_knowledge_validates_arguments(vector_db):
     )
 
 
-def test_search_knowledge_masks_deleted_entries(vector_db):
-    vector_db.add_knowledge("Deleted", "Content 1")
-    vector_db.add_knowledge("Active", "Content 2")
-    vector_db.delete_knowledge("Deleted")
-    real_index = vector_db.index
-    mock_index = MagicMock()
-    mock_index.search.side_effect = real_index.search
-    vector_db.index = mock_index
-
-    result = vector_db.search_knowledge("Content", top_k=10)
-
-    assert "Deleted" not in result
-    assert "Active" in result
-    assert mock_index.search.call_args.kwargs["k"] == 1
-    np.testing.assert_array_equal(
-        mock_index.search.call_args.kwargs["mask"], np.array([False, True])
-    )
-
-
 def test_delete_knowledge(vector_db):
     vector_db.add_knowledge("Doc 1", "Content 1")
     vector_db.add_knowledge("Doc 2", "Content 2")
 
     assert len(vector_db.document_store) == 2
 
-    # Soft delete
+    # Hard delete
     res = vector_db.delete_knowledge("Doc 1")
     assert "Successfully deleted 1 chunks" in res
 
-    assert vector_db.document_store[0]["deleted"] is True
-    assert vector_db.document_store[1]["deleted"] is False
-
-    # Search should ignore deleted
-    search_res = vector_db.search_knowledge("Content", top_k=10)
-    # The search mock above was only for test_search_knowledge, here it uses the default one
-    # Doc 1 is deleted, should not appear
-    assert "Doc 1" not in search_res
-    # Doc 2 is valid, may or may not be returned depending on random vectors, but Doc 1 must be filtered before even searching or after searching.
-    # Actually, the search iterates over results and skips deleted ones.
+    assert len(vector_db.document_store) == 1
+    assert 0 not in vector_db.document_store
+    assert 1 in vector_db.document_store
 
 
 def test_optimize_index(vector_db):
@@ -198,20 +172,12 @@ def test_optimize_index(vector_db):
 
     vector_db.delete_knowledge("Doc 2")
 
-    assert len(vector_db.document_store) == 3
-    assert vector_db.document_store[1]["deleted"] is True
+    assert len(vector_db.document_store) == 2
+    assert 1 not in vector_db.document_store
 
     res = vector_db.optimize_index()
-    assert "Removed 1 deleted chunks" in res
-
-    # Check new document store
-    assert len(vector_db.document_store) == 2
-    assert vector_db.document_store[0]["title"] == "Doc 1"
-    assert vector_db.document_store[1]["title"] == "Doc 3"
-
-    # Check new IDs are updated
-    assert vector_db.document_store[0]["id"] == 0
-    assert vector_db.document_store[1]["id"] == 1
+    assert "Optimization complete" in res
+    assert "Current size: 2 chunks" in res
 
 
 def test_load_storage_rebuilds_mismatched_index(temp_files, mock_sentence_transformer):
@@ -221,19 +187,19 @@ def test_load_storage_rebuilds_mismatched_index(temp_files, mock_sentence_transf
 
     empty_index = MagicMock()
     empty_index.__len__.return_value = 0
-    with patch("vector_db.turbovec.TurboQuantIndex") as mock_index_type:
+    with patch("vector_db.turbovec.IdMapIndex") as mock_index_type:
         rebuilt_index = MagicMock()
         rebuilt_index.__len__.return_value = 0
         mock_index_type.return_value = rebuilt_index
         empty_index.load.return_value = None
-        mock_index_type.side_effect = [empty_index, rebuilt_index]
+        mock_index_type.load.side_effect = Exception("failed to load")
 
         loaded_db = VectorDB(
             dimension=384, metadata_file=metadata_file, index_file=index_file
         )
 
     assert loaded_db.document_store[0]["title"] == "Doc"
-    rebuilt_index.add.assert_called_once()
+    rebuilt_index.add_with_ids.assert_called_once()
     rebuilt_index.write.assert_called_once_with(index_file)
 
 
