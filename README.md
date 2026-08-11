@@ -23,8 +23,8 @@ By running this local server, your AI assistant gains the ability to "read", "re
 
 - **Protocol**: FastMCP (running over `stdio`).
 - **Embedding Model**: `sentence-transformers` (`all-MiniLM-L6-v2`) generating 384-dimensional vectors.
-- **Vector Database**: `turbovec` (TurboQuantIndex) for ultra-fast, locally persisted similarity search.
-- **Storage Layer**: Local JSON mapping for metadata, allowing automated fallback and index rebuilding if the `.bin` file is lost.
+- **Vector Database**: `turbovec` (`IdMapIndex`) for ultra-fast, locally persisted similarity search with stable external IDs and O(1) deletions.
+- **Storage Layer**: Local JSON mapping for metadata (storing documents in a dictionary alongside a `next_id` counter for safe ID management), allowing automated fallback and index rebuilding if the vector index file is lost.
 - **Modular Codebase**: The project is cleanly separated into `main.py` (entry point), `vector_db.py` (database logic), and `tools.py` (MCP tool definitions).
 
 ---
@@ -145,11 +145,7 @@ Add the following block to your `mcpServers` configuration:
 
 To ensure your AI assistant seamlessly and proactively uses the memory server without asking for permission, we highly recommend adding the following to your AI's **Custom Instructions** or **System Prompt**:
 
-```text
-You are connected to a long-term memory system via the Turbovec MCP.
-You must proactively use `search_knowledge` and `add_knowledge` automatically to save and retrieve important project context, architectural decisions, and code snippets.
-Do not ask for permission to save or search memory; execute these operations seamlessly in the background to ensure context is preserved across our sessions.
-```
+/Rules.md
 
 ## Available MCP Tools
 
