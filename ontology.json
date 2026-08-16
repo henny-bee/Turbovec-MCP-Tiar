@@ -1,0 +1,38 @@
+{
+  "version": 1,
+  "entities": [
+    "breakthrough",
+    "concept",
+    "decision",
+    "document",
+    "entity",
+    "event",
+    "file",
+    "person",
+    "preference",
+    "project",
+    "session",
+    "technology"
+  ],
+  "relations": [
+    "ANALOGOUS_TO",
+    "BREAKTHROUGH_IN",
+    "BRIDGES_TO",
+    "CONNECTS_TO",
+    "DECIDED_IN",
+    "ENABLES",
+    "KNOWS",
+    "MENTIONED_IN",
+    "PRECEDED_BY",
+    "SUPPORTS",
+    "WORKS_AT",
+    "caused_by",
+    "contradicts",
+    "created_by",
+    "depends_on",
+    "implements",
+    "related_to",
+    "replaced",
+    "uses"
+  ]
+}
