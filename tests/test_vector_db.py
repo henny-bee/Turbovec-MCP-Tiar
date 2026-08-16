@@ -16,7 +16,7 @@ def temp_files(tmp_path):
 
 @pytest.fixture
 def mock_sentence_transformer():
-    with patch("vector_db.SentenceTransformer") as MockST:
+    with patch("embeddings.minilm.SentenceTransformer") as MockST:
         instance = MockST.return_value
 
         def mock_encode(text, **kwargs):
