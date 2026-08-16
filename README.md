@@ -1,5 +1,6 @@
 <img width="1984" height="576" alt="vnuw9pe8htgfwu87qgfbw" src="https://github.com/user-attachments/assets/f781a60d-11b9-4198-b80b-fca16a927184" />
 
+[![MCP Badge](https://lobehub.com/badge/mcp/henny-bee-turbovec-mcp-server?style=flat)](https://lobehub.com/mcp/henny-bee-turbovec-mcp-server)
 # Turbovec MCP: Embedded Hybrid Graph-Vector-Lexical Memory System
 
 Turbovec MCP Server is an enterprise-grade, local-first **Model Context Protocol (MCP)** implementation that serves as an advanced, persistent, transaction-safe, and self-organizing long-term memory for AI coding assistants (such as **Cursor**, **Claude Desktop**, **Cline / Roo Code**, **Windsurf**, and **Zoo Code**).
