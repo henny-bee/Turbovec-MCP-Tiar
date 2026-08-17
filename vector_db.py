@@ -836,7 +836,7 @@ class VectorDB:
         current_occurred_at = row[6]
         current_certainty = row[7]
         current_salience_score = row[8]
-        current_properties = json.loads(row[10]) if row[10] else {}
+        current_properties = json.loads(row[11]) if row[11] else {}
 
         new_name = name if name is not None else current_name
         new_node_type = node_type if node_type is not None else current_node_type
