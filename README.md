@@ -90,11 +90,12 @@ graph TD
 
 - **Zero-Dependency & In-Process**: Runs entirely locally on your machine without requiring heavy external database services (like Qdrant, Milvus, FalkorDB, or Neo4j).
 - **Consolidated Hybrid Memory**: Seamlessly unifies structured **entity graphs**, unstructured **text/code chunks**, and relational **factual observations** under a single storage engine.
-- **Fail-Loud Operational Reliability**: Distinguishes between "no match found" and "system failure" using a unified `SearchError` with machine-readable error codes. Includes a strict **write-compensation rollback pattern** to keep SQLite and the vector index fully in sync on failure.
+- **Fail-Loud Operational Reliability**: Distinguishes between "no match found" and "system failure" using a unified `SearchError` with machine-readable error codes. Includes a strict **write-compensation rollback pattern** and atomic transactions to keep SQLite and the vector index fully in sync on failure.
+- **Stateless & Thread-Safe Identifiers**: Utilizes UUID-based entity generation hashed securely for vector mappings, ensuring collision resistance, high concurrency, and safety across server restarts without relying on volatile in-memory counters.
 - **Advanced Hybrid Search & Reranking**: Fuses retrieval results from Vector (SentenceTransformers) and Lexical (FTS5) channels using **Reciprocal Rank Fusion (RRF)**, with optional high-precision **Cross-Encoder Reranking**.
 - **Temporal Memory & Point-in-Time Queries**: Full snapshot capability (`point_in_time_query`), chronological event timelines (`query_timeline`), historical graph diffing (`diff_knowledge_state`), and temporal neighbor traversal.
 - **Autonomous Librarian Engine**: A background worker (and on-demand tool) that leverages **DBSCAN Clustering** to group related concepts, detect duplicates, and synthesize higher-order concepts with transparent provenance logs.
-- **Dynamic Ontology Validation**: Enforces structured schemas for entity nodes and relationship edges defined in a configurable `ontology.json` file.
+- **Dynamic Ontology Validation**: Enforces structured schemas for entity nodes and relationship edges defined in a configurable `ontology.json` file. Text extractors automatically map unstructured language directly into standardized semantic edges (e.g., mapping "lives in" to `LOCATED_IN`, "owns" to `OWNS`).
 - **Memory Lifecycle & Active Archiving**: Prevents historical clutter from degrading retrieval performance by moving inactive entities through a lifecycle status chain: `ACTIVE` → `STALE` → `ARCHIVED` → `PRUNED`.
 - **Inter-Session Messaging (Bottles)**: Standardized message bottles (`create_bottle`, `get_bottles`, `acknowledge_bottle`) left by agents to coordinate work across independent chat sessions.
 - **Graph Analytics Suite**: Evaluates graph topology on-demand to compute Degree Centrality, PageRank, Connected Components, and Label Propagation Algorithm (LPA) Community Detection.
@@ -113,6 +114,7 @@ The server and background workers can be configured via environment variables on
 | `BG_DISCOVERY_THRESHOLD`| Float | `0.7` | Cosine similarity threshold for automatic background edge inferences. |
 | `SQLITE_DB_FILE` | String | `memory.db` | Path to the SQLite metadata and graph database. |
 | `PYTHONUNBUFFERED` | String | `1` | Ensures python outputs are flushed immediately, avoiding JSON-RPC deadlocks. |
+| `run_mode` | String | `None` | Set to `local` (e.g., via `.env`) to run the MCP server over SSE on `localhost:4392` instead of `stdio`. |
 
 ---
 
@@ -219,7 +221,7 @@ Go to **Settings > Features > MCP**, click **Add New MCP Server**:
 - **Command**: `C:/path/to/turbovec-mcp-server/venv/Scripts/python.exe` (on Windows) or `/path/to/venv/bin/python` (on Mac/Linux)
 - **Args**: `["C:/path/to/turbovec-mcp-server/main.py"]`
 
-### 3. Cline / Roo Code Setup
+### 3. Cline / Roo Code Setup (Standard stdio)
 Modify your system's Cline MCP settings file (`%APPDATA%/Code/User/globalStorage/saoudrizwan.claude-dev/settings/cline_mcp_settings.json` on Windows):
 
 ```json
@@ -237,6 +239,29 @@ Modify your system's Cline MCP settings file (`%APPDATA%/Code/User/globalStorage
 }
 ```
 > **Troubleshooting Tip**: If you get `ModuleNotFoundError` during setup, your editor is calling the global system Python instead of your virtual environment. Resolve this by specifying the absolute path of your venv's Python executable as the `"command"` property (e.g. `C:/turbovec-mcp-server/venv/Scripts/python.exe`).
+
+### 4. Low Memory / No Docker Setup (Local SSE Mode)
+If you cannot run Docker due to low memory, or want to keep the MCP server running independently of the AI editor session, you can run the server in `local` mode via Server-Sent Events (SSE).
+
+1. First, create a `.env` file in the `turbovec-mcp-server` directory and add:
+   ```env
+   run_mode=local
+   ```
+2. Manually run the server in your terminal:
+   ```bash
+   python main.py
+   ```
+   *(It will start the server on `http://localhost:4392/sse`)*
+3. Then, modify your system's Cline MCP settings file to connect via SSE:
+   ```json
+   {
+     "mcpServers": {
+       "turbovec-local": {
+         "url": "http://localhost:4392/sse"
+       }
+     }
+   }
+   ```
 
 ---
 
