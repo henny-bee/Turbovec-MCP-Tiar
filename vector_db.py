@@ -482,21 +482,17 @@ class VectorDB:
             logger.error(f"Failed to encode '{title}': {e}", exc_info=True)
             return f"Error: Failed to process '{title}'."
 
-        start_id = self.next_id
-        ids = np.arange(start_id, start_id + len(chunks), dtype=np.uint64)
-
-        try:
-            self.index.add_with_ids(np.asarray(vectors, dtype=np.float32), ids)
-        except Exception as e:
-            logger.error(f"Failed to add '{title}' to the index: {e}", exc_info=True)
-            return f"Error: Failed to add '{title}' to the index."
+        ids = []
+        chunk_docs = []
 
         # Write to SQLite atomically
         try:
             with self.conn as conn:
                 for i, chunk in enumerate(chunks):
-                    doc_id = int(ids[i])
-                    node_id = str(doc_id)
+                    node_id = str(uuid.uuid4())
+                    doc_id = self.generate_vector_id(node_id, conn)
+                    ids.append(doc_id)
+
                     created_at = datetime.datetime.now(
                         datetime.timezone.utc
                     ).isoformat()
@@ -529,28 +525,29 @@ class VectorDB:
                         "INSERT INTO vector_id_mapping (vector_id, node_id) VALUES (?, ?)",
                         (self._to_signed_64(doc_id), node_id),
                     )
+
+                    chunk_docs.append(
+                        {
+                            "id": doc_id,
+                            "title": title,
+                            "chunk_index": i,
+                            "content": chunk,
+                        }
+                    )
+
+                # Add to FAISS index inside the transaction so SQLite rolls back if FAISS fails
+                self.index.add_with_ids(
+                    np.asarray(vectors, dtype=np.float32),
+                    np.asarray(ids, dtype=np.uint64),
+                )
+
         except Exception as e:
-            logger.error(
-                f"SQLite insertion failed during add_knowledge: {e}", exc_info=True
-            )
-            # Rollback vector index changes
-            for i in range(len(chunks)):
-                try:
-                    self.index.remove(int(ids[i]))
-                except Exception:
-                    pass
-            return "Error: Failed to save knowledge to SQLite database."
+            logger.error(f"Insertion failed during add_knowledge: {e}", exc_info=True)
+            return f"Error: Failed to save knowledge: {e}"
 
-        for i, chunk in enumerate(chunks):
-            doc_id = int(ids[i])
-            self.document_store[doc_id] = {
-                "id": doc_id,
-                "title": title,
-                "chunk_index": i,
-                "content": chunk,
-            }
+        for doc in chunk_docs:
+            self.document_store[doc["id"]] = doc
 
-        self.next_id += len(chunks)
         self.save_storage()
 
         # Run extraction pipeline on incoming text
@@ -839,7 +836,7 @@ class VectorDB:
         current_occurred_at = row[6]
         current_certainty = row[7]
         current_salience_score = row[8]
-        current_properties = json.loads(row[11]) if row[11] else {}
+        current_properties = json.loads(row[10]) if row[10] else {}
 
         new_name = name if name is not None else current_name
         new_node_type = node_type if node_type is not None else current_node_type
@@ -1385,43 +1382,43 @@ class VectorDB:
             # Relationship: "X works at Y", "X is part of Y", etc.
             rel_patterns = [
                 (
-                    "works at",
+                    "WORKS_AT",
                     r"\b(?P<from_node>[A-Z][a-zA-Z0-9]*(?:\s+[A-Z][a-zA-Z0-9]*)*)\s+works?\s+at\s+(?P<to_node>[A-Z][a-zA-Z0-9]*(?:\s+[A-Z][a-zA-Z0-9]*)*)\b",
                 ),
                 (
-                    "is part of",
+                    "PART_OF",
                     r"\b(?P<from_node>[A-Z][a-zA-Z0-9]*(?:\s+[A-Z][a-zA-Z0-9]*)*)\s+is\s+part\s+of\s+(?P<to_node>[A-Z][a-zA-Z0-9]*(?:\s+[A-Z][a-zA-Z0-9]*)*)\b",
                 ),
                 (
-                    "depends on",
+                    "DEPENDS_ON",
                     r"\b(?P<from_node>[A-Z][a-zA-Z0-9]*(?:\s+[A-Z][a-zA-Z0-9]*)*)\s+depends?\s+on\s+(?P<to_node>[A-Z][a-zA-Z0-9]*(?:\s+[A-Z][a-zA-Z0-9]*)*)\b",
                 ),
                 (
-                    "member of",
+                    "MEMBER_OF",
                     r"\b(?P<from_node>[A-Z][a-zA-Z0-9]*(?:\s+[A-Z][a-zA-Z0-9]*)*)\s+(?:is\s+)?members?\s+of\s+(?P<to_node>[A-Z][a-zA-Z0-9]*(?:\s+[A-Z][a-zA-Z0-9]*)*)\b",
                 ),
                 (
-                    "lives in",
+                    "LOCATED_IN",
                     r"\b(?P<from_node>[A-Z][a-zA-Z0-9]*(?:\s+[A-Z][a-zA-Z0-9]*)*)\s+lives?\s+in\s+(?P<to_node>[A-Z][a-zA-Z0-9]*(?:\s+[A-Z][a-zA-Z0-9]*)*)\b",
                 ),
                 (
-                    "created",
+                    "CREATED_BY",
                     r"\b(?P<from_node>[A-Z][a-zA-Z0-9]*(?:\s+[A-Z][a-zA-Z0-9]*)*)\s+created\s+(?P<to_node>[A-Z][a-zA-Z0-9]*(?:\s+[A-Z][a-zA-Z0-9]*)*)\b",
                 ),
                 (
-                    "owns",
+                    "OWNS",
                     r"\b(?P<from_node>[A-Z][a-zA-Z0-9]*(?:\s+[A-Z][a-zA-Z0-9]*)*)\s+owns?\s+(?P<to_node>[A-Z][a-zA-Z0-9]*(?:\s+[A-Z][a-zA-Z0-9]*)*)\b",
                 ),
                 (
-                    "supports",
+                    "SUPPORTS",
                     r"\b(?P<from_node>[A-Z][a-zA-Z0-9]*(?:\s+[A-Z][a-zA-Z0-9]*)*)\s+supports?\s+(?P<to_node>[A-Z][a-zA-Z0-9]*(?:\s+[A-Z][a-zA-Z0-9]*)*)\b",
                 ),
                 (
-                    "is partner of",
+                    "PARTNER_WITH",
                     r"\b(?P<from_node>[A-Z][a-zA-Z0-9]*(?:\s+[A-Z][a-zA-Z0-9]*)*)\s+is\s+partners?\s+of\s+(?P<to_node>[A-Z][a-zA-Z0-9]*(?:\s+[A-Z][a-zA-Z0-9]*)*)\b",
                 ),
                 (
-                    "is connected to",
+                    "CONNECTS_TO",
                     r"\b(?P<from_node>[A-Z][a-zA-Z0-9]*(?:\s+[A-Z][a-zA-Z0-9]*)*)\s+is\s+connected\s+to\s+(?P<to_node>[A-Z][a-zA-Z0-9]*(?:\s+[A-Z][a-zA-Z0-9]*)*)\b",
                 ),
             ]
@@ -1444,7 +1441,7 @@ class VectorDB:
                                 "type": "entity",
                                 "properties": {"description": "Extracted named entity"},
                             }
-                        rel_type = verb.upper().replace(" ", "_")
+                        rel_type = verb
                         relationships.append(
                             {
                                 "from": from_node,
