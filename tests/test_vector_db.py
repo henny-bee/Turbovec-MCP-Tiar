@@ -72,11 +72,12 @@ def test_add_knowledge(vector_db):
 
     assert "Successfully added" in result
     assert len(vector_db.document_store) == 1
-    doc = vector_db.document_store[0]
+    doc_id = list(vector_db.document_store.keys())[0]
+    doc = vector_db.document_store[doc_id]
     assert doc["title"] == title
     assert doc["content"] == text
     assert "deleted" not in doc
-    assert doc["id"] == 0
+    assert doc["id"] == doc_id
 
     # Check if files were created
     assert os.path.exists(vector_db.metadata_file)
@@ -86,7 +87,7 @@ def test_add_knowledge(vector_db):
     with open(vector_db.metadata_file, "r") as f:
         stored_metadata = json.load(f)
     assert len(stored_metadata["documents"]) == 1
-    assert stored_metadata["documents"]["0"]["title"] == title
+    assert stored_metadata["documents"][str(doc_id)]["title"] == title
 
 
 def test_add_knowledge_rejects_empty_input(vector_db):
@@ -156,13 +157,21 @@ def test_delete_knowledge(vector_db):
 
     assert len(vector_db.document_store) == 2
 
+    doc1_id = None
+    doc2_id = None
+    for d_id, d in vector_db.document_store.items():
+        if d["title"] == "Doc 1":
+            doc1_id = d_id
+        if d["title"] == "Doc 2":
+            doc2_id = d_id
+
     # Hard delete
     res = vector_db.delete_knowledge("Doc 1")
     assert "Successfully deleted 1 chunks" in res
 
     assert len(vector_db.document_store) == 1
-    assert 0 not in vector_db.document_store
-    assert 1 in vector_db.document_store
+    assert doc1_id not in vector_db.document_store
+    assert doc2_id in vector_db.document_store
 
 
 def test_optimize_index(vector_db):
@@ -170,10 +179,15 @@ def test_optimize_index(vector_db):
     vector_db.add_knowledge("Doc 2", "Content 2")
     vector_db.add_knowledge("Doc 3", "Content 3")
 
+    doc2_id = None
+    for d_id, d in vector_db.document_store.items():
+        if d["title"] == "Doc 2":
+            doc2_id = d_id
+
     vector_db.delete_knowledge("Doc 2")
 
     assert len(vector_db.document_store) == 2
-    assert 1 not in vector_db.document_store
+    assert doc2_id not in vector_db.document_store
 
     res = vector_db.optimize_index()
     assert "Optimization complete" in res
@@ -198,7 +212,8 @@ def test_load_storage_rebuilds_mismatched_index(temp_files, mock_sentence_transf
             dimension=384, metadata_file=metadata_file, index_file=index_file
         )
 
-    assert loaded_db.document_store[0]["title"] == "Doc"
+    doc_id = list(loaded_db.document_store.keys())[0]
+    assert loaded_db.document_store[doc_id]["title"] == "Doc"
     rebuilt_index.add_with_ids.assert_called_once()
     rebuilt_index.write.assert_called_once_with(index_file)
 
