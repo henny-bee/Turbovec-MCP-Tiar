@@ -47,9 +47,10 @@ except Exception as e:
 
 def main():
     logger.info("Starting Turbovec MCP Server...")
-    
+
     try:
         from dotenv import load_dotenv
+
         load_dotenv()
     except ImportError:
         logger.warning("python-dotenv not installed, continuing without .env file.")
