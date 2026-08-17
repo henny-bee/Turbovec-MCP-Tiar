@@ -47,10 +47,23 @@ except Exception as e:
 
 def main():
     logger.info("Starting Turbovec MCP Server...")
+    
+    try:
+        from dotenv import load_dotenv
+        load_dotenv()
+    except ImportError:
+        logger.warning("python-dotenv not installed, continuing without .env file.")
+
+    run_mode = os.environ.get("run_mode", None)
 
     try:
         # Initialize MCP Server
-        mcp = FastMCP("TurbovecSemanticSearch")
+        mcp_kwargs = {}
+        if run_mode == "local":
+            mcp_kwargs["host"] = "localhost"
+            mcp_kwargs["port"] = 4392
+
+        mcp = FastMCP("TurbovecSemanticSearch", **mcp_kwargs)
 
         # Initialize Storage & Turbovec Index
         # This will also load the SentenceTransformer model
@@ -71,9 +84,13 @@ def main():
         logger.error(f"Error during server initialization: {e}", exc_info=True)
         sys.exit(1)
 
-    # Run the server using stdio transport
-    logger.info("Starting MCP stdio transport...")
-    mcp.run(transport="stdio")
+    if run_mode == "local":
+        logger.info("Starting MCP server in local mode on http://localhost:4392/sse")
+        mcp.run(transport="sse")
+    else:
+        # Run the server using stdio transport
+        logger.info("Starting MCP stdio transport...")
+        mcp.run(transport="stdio")
 
 
 if __name__ == "__main__":

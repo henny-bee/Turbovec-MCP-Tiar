@@ -3,3 +3,4 @@ sentence-transformers
 numpy
 turbovec
 huggingface-hub
+python-dotenv
