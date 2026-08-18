@@ -1,4 +1,4 @@
-<img width="1984" height="576" alt="vnuw9pe8htgfwu87qgfbw" src="https://github.com/user-attachments/assets/f781a60d-11b9-4198-b80b-fca16a927184" />
+<img width="1984" height="576" alt="Turbovec MCP" src="https://github.com/user-attachments/assets/f781a60d-11b9-4198-b80b-fca16a927184" />
 
 # Turbovec MCP: Embedded Hybrid Graph-Vector-Lexical Memory System
 
