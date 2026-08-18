@@ -86,7 +86,7 @@ def test_extraction_pipeline_fallback(db):
         # Check "Alice lives in Paris" relationship
         lives_in_rel = [r for r in rels if r["from"] == "Alice" and r["to"] == "Paris"]
         assert len(lives_in_rel) == 1
-        assert lives_in_rel[0]["type"] == "LIVES_IN"
+        assert lives_in_rel[0]["type"] == "LOCATED_IN"
 
         # Verify observations
         obs = result["observations"]
