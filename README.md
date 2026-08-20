@@ -143,6 +143,7 @@ This project is licensed under the MIT License. See the [LICENSE](LICENSE) file 
 
 [![MCP Badge](https://lobehub.com/badge/mcp/henny-bee-turbovec-mcp-server?style=flat)](https://lobehub.com/mcp/henny-bee-turbovec-mcp-server)
 [![Turbovec-MCP-Tiar MCP server](https://glama.ai/mcp/servers/henny-bee/Turbovec-MCP-Tiar/badges/score.svg)](https://glama.ai/mcp/servers/henny-bee/Turbovec-MCP-Tiar)
+[![M8ven Score](https://m8ven.ai/badge/mcp/henny-bee-turbovec-mcp-tiar-1qnnb8)](https://m8ven.ai/mcp/henny-bee-turbovec-mcp-tiar-1qnnb8)
 
 **Sponsored by**
 
