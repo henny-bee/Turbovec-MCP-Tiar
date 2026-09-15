@@ -1,71 +1,84 @@
+"""DBSCAN over embedding vectors.
+
+The pairwise distance matrix is computed with the ``|a-b|² = |a|² + |b|² - 2ab``
+identity, which is one BLAS matrix product instead of an ``O(n²)`` Python loop
+and keeps memory at ``n²`` floats rather than ``n² * dim``.
+"""
+
+from __future__ import annotations
+
+from typing import List
+
 import numpy as np
-from typing import List, Dict, Set, Any
+
+__all__ = ["DBSCANClustering", "pairwise_distances"]
+
+
+def pairwise_distances(embeddings: np.ndarray) -> np.ndarray:
+    """Euclidean distance matrix for the rows of ``embeddings``."""
+    squared_norms = np.einsum("ij,ij->i", embeddings, embeddings)
+    squared = (
+        squared_norms[:, None]
+        + squared_norms[None, :]
+        - 2.0 * (embeddings @ embeddings.T)
+    )
+    np.maximum(squared, 0.0, out=squared)
+    distances = np.sqrt(squared)
+    np.fill_diagonal(distances, 0.0)
+    return distances
 
 
 class DBSCANClustering:
-    def __init__(self, eps: float = 0.5, min_samples: int = 2):
+    def __init__(self, eps: float = 0.5, min_samples: int = 2) -> None:
         self.eps = eps
         self.min_samples = min_samples
 
     def fit(self, embeddings: np.ndarray) -> List[int]:
-        """
-        Fits DBSCAN on embeddings.
-        Returns a list of cluster labels where -1 represents noise points.
-        """
-        n_samples = len(embeddings)
-        labels = [-1] * n_samples
-        visited = set()
-
-        # Compute distance matrix (Euclidean distance)
-        # To handle empty or small lists of embeddings gracefully
-        if n_samples == 0:
+        """Returns one cluster label per row; ``-1`` marks noise."""
+        sample_count = len(embeddings)
+        if sample_count == 0:
             return []
 
-        dist_matrix = np.zeros((n_samples, n_samples))
-        for i in range(n_samples):
-            for j in range(i, n_samples):
-                dist = float(np.linalg.norm(embeddings[i] - embeddings[j]))
-                dist_matrix[i, j] = dist
-                dist_matrix[j, i] = dist
+        matrix = np.asarray(embeddings, dtype=np.float32)
+        distances = pairwise_distances(matrix)
+        labels = [-1] * sample_count
+        visited: set = set()
 
-        def get_neighbors(index: int) -> List[int]:
-            return [
-                idx for idx, dist in enumerate(dist_matrix[index]) if dist <= self.eps
-            ]
+        def neighbors_of(index: int) -> List[int]:
+            return np.nonzero(distances[index] <= self.eps)[0].tolist()
 
         cluster_id = 0
-        for i in range(n_samples):
-            if i in visited:
+        for seed in range(sample_count):
+            if seed in visited:
                 continue
-            visited.add(i)
+            visited.add(seed)
 
-            neighbors = get_neighbors(i)
+            neighbors = neighbors_of(seed)
             if len(neighbors) < self.min_samples:
-                labels[i] = -1
-            else:
-                # Expand cluster
-                labels[i] = cluster_id
-                queue = list(neighbors)
-                queue.remove(i) if i in queue else None
+                labels[seed] = -1
+                continue
 
-                # Use while loop to expand
-                idx_in_queue = 0
-                while idx_in_queue < len(queue):
-                    neighbor_idx = queue[idx_in_queue]
-                    if neighbor_idx not in visited:
-                        visited.add(neighbor_idx)
-                        neigh_neighbors = get_neighbors(neighbor_idx)
-                        if len(neigh_neighbors) >= self.min_samples:
-                            # Add unvisited neighbors to queue
-                            for n in neigh_neighbors:
-                                if n not in queue and n not in visited:
-                                    queue.append(n)
+            # Core point: expand the cluster breadth-first over density-reachable
+            # points, absorbing border points as it goes.
+            labels[seed] = cluster_id
+            queue = [index for index in neighbors if index != seed]
+            queued = set(queue)
 
-                    if labels[neighbor_idx] == -1:
-                        labels[neighbor_idx] = cluster_id
+            position = 0
+            while position < len(queue):
+                candidate = queue[position]
+                if candidate not in visited:
+                    visited.add(candidate)
+                    candidate_neighbors = neighbors_of(candidate)
+                    if len(candidate_neighbors) >= self.min_samples:
+                        for index in candidate_neighbors:
+                            if index not in queued and index not in visited:
+                                queue.append(index)
+                                queued.add(index)
+                if labels[candidate] == -1:
+                    labels[candidate] = cluster_id
+                position += 1
 
-                    idx_in_queue += 1
-
-                cluster_id += 1
+            cluster_id += 1
 
         return labels

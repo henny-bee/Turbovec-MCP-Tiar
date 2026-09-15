@@ -1,8 +1,20 @@
+"""Graph topology analytics: components, communities, centrality, PageRank."""
+
+from __future__ import annotations
+
 import logging
-import json
-from typing import Dict, List, Any, Set, Tuple
+import random
+import time
+from collections import deque
+from typing import Any, Dict, List, Tuple
 
 logger = logging.getLogger(__name__)
+
+__all__ = ["GraphAnalytics"]
+
+# Analytics are re-run on every search-heavy session; a short cache keeps a
+# burst of calls from recomputing the same topology.
+CACHE_TTL_SECONDS = 5.0
 
 
 class GraphAnalytics:
@@ -108,10 +120,10 @@ class GraphAnalytics:
         for node in nodes:
             if node not in visited:
                 component = []
-                queue = [node]
+                queue = deque([node])
                 visited.add(node)
                 while queue:
-                    curr = queue.pop(0)
+                    curr = queue.popleft()
                     component.append(curr)
                     for neighbor in adj[curr]:
                         if neighbor not in visited:
@@ -141,9 +153,7 @@ class GraphAnalytics:
                 adj[u].append((v, w))
                 adj[v].append((u, w))
 
-        import random
-
-        # Seed for determinism or pseudo-random shuffles
+        # Fixed seed so community ids are reproducible across runs.
         rng = random.Random(42)
 
         for _ in range(max_iter):
@@ -190,11 +200,8 @@ class GraphAnalytics:
 
     def analyze_graph(self) -> Dict[str, Any]:
         """Runs connected components, LPA community detection, centrality, and PageRank."""
-        # Check cache (expire in 5 seconds to prevent hammering during intensive search sessions)
-        import time
-
         now = time.time()
-        if self._cached_results and (now - self._last_cache_time) < 5.0:
+        if self._cached_results and (now - self._last_cache_time) < CACHE_TTL_SECONDS:
             return self._cached_results
 
         nodes, edges = self.get_nodes_and_edges()

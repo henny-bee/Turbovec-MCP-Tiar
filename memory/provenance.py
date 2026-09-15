@@ -1,4 +1,3 @@
-import sqlite3
 import datetime
 import uuid
 import logging

@@ -1,44 +1,103 @@
-import time
-import sqlite3
-import json
+"""Retrieval telemetry: per-stage latency recording and rolling statistics.
+
+Recording happens on the hot path of every search, so the connection is
+created once per thread instead of once per event, and statistics are computed
+over a bounded window of the most recent rows rather than the whole table.
+"""
+
+from __future__ import annotations
+
+import datetime
 import logging
-from typing import Dict, Any, List
+import sqlite3
+import threading
+from typing import Any, Dict, List, Optional
+
 import numpy as np
 
 logger = logging.getLogger(__name__)
 
+__all__ = ["SearchTelemetry"]
+
+_EMPTY_STATS: Dict[str, Any] = {
+    "total_searches": 0,
+    "latency_p50": 0.0,
+    "latency_p95": 0.0,
+    "latency_p99": 0.0,
+    "avg_total_latency": 0.0,
+    "avg_fts_latency": 0.0,
+    "avg_vector_latency": 0.0,
+    "avg_graph_latency": 0.0,
+    "avg_embedding_latency": 0.0,
+    "avg_reranker_latency": 0.0,
+    "avg_candidates": 0.0,
+    "avg_results": 0.0,
+    "error_rate": 0.0,
+    "cache_hit_rate": 0.0,
+}
+
+_INSERT = """
+    INSERT INTO search_metrics (
+        timestamp, total_latency, fts_latency, vector_latency,
+        graph_latency, embedding_latency, reranker_latency,
+        candidate_count, result_count, is_error, error_code, cache_hit
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+"""
+
+_CREATE_TABLE = """
+    CREATE TABLE IF NOT EXISTS search_metrics (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        timestamp TEXT NOT NULL,
+        total_latency REAL NOT NULL,
+        fts_latency REAL NOT NULL,
+        vector_latency REAL NOT NULL,
+        graph_latency REAL NOT NULL,
+        embedding_latency REAL NOT NULL,
+        reranker_latency REAL NOT NULL,
+        candidate_count INTEGER NOT NULL,
+        result_count INTEGER NOT NULL,
+        is_error INTEGER NOT NULL,
+        error_code TEXT,
+        cache_hit INTEGER DEFAULT 0
+    );
+"""
+
 
 class SearchTelemetry:
-    def __init__(self, db_file: str):
+    def __init__(
+        self, db_file: str, enabled: bool = True, window: int = 10_000
+    ) -> None:
         self.db_file = db_file
+        self.enabled = enabled
+        self.window = max(1, window)
+        self._local = threading.local()
         self._init_metrics_table()
 
-    def _init_metrics_table(self) -> None:
-        """Initializes the search_metrics table in SQLite."""
-        try:
-            conn = sqlite3.connect(self.db_file)
-            with conn:
-                conn.execute("""
-                    CREATE TABLE IF NOT EXISTS search_metrics (
-                        id INTEGER PRIMARY KEY AUTOINCREMENT,
-                        timestamp TEXT NOT NULL,
-                        total_latency REAL NOT NULL,
-                        fts_latency REAL NOT NULL,
-                        vector_latency REAL NOT NULL,
-                        graph_latency REAL NOT NULL,
-                        embedding_latency REAL NOT NULL,
-                        reranker_latency REAL NOT NULL,
-                        candidate_count INTEGER NOT NULL,
-                        result_count INTEGER NOT NULL,
-                        is_error INTEGER NOT NULL,
-                        error_code TEXT,
-                        cache_hit INTEGER DEFAULT 0
-                    );
-                    """)
-            conn.close()
-        except Exception as e:
-            logger.error(f"Failed to initialize search_metrics table: {e}")
+    # -- connection --------------------------------------------------------
+    def _connection(self) -> Optional[sqlite3.Connection]:
+        conn = getattr(self._local, "conn", None)
+        if conn is None:
+            try:
+                conn = sqlite3.connect(self.db_file, timeout=10.0)
+                conn.execute("PRAGMA journal_mode=WAL;")
+                conn.execute("PRAGMA synchronous=NORMAL;")
+            except Exception as exc:
+                logger.error(f"Failed to open telemetry database: {exc}")
+                return None
+            self._local.conn = conn
+        return conn
 
+    def _init_metrics_table(self) -> None:
+        conn = self._connection()
+        if conn is None:
+            return
+        try:
+            with conn:
+                conn.execute(_CREATE_TABLE)
+        except Exception as exc:
+            logger.error(f"Failed to initialize search_metrics table: {exc}")
+
+    # -- writes ------------------------------------------------------------
     def record_search(
         self,
         total_latency: float,
@@ -53,23 +112,19 @@ class SearchTelemetry:
         error_code: str = None,
         cache_hit: bool = False,
     ) -> None:
-        """Records a single search event to the database."""
-        import datetime
+        """Records one search event. Never raises into the retrieval path."""
+        if not self.enabled:
+            return
+        conn = self._connection()
+        if conn is None:
+            return
 
-        timestamp = datetime.datetime.now(datetime.timezone.utc).isoformat()
         try:
-            conn = sqlite3.connect(self.db_file)
             with conn:
                 conn.execute(
-                    """
-                    INSERT INTO search_metrics (
-                        timestamp, total_latency, fts_latency, vector_latency,
-                        graph_latency, embedding_latency, reranker_latency,
-                        candidate_count, result_count, is_error, error_code, cache_hit
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    """,
+                    _INSERT,
                     (
-                        timestamp,
+                        datetime.datetime.now(datetime.timezone.utc).isoformat(),
                         total_latency,
                         fts_latency,
                         vector_latency,
@@ -83,70 +138,52 @@ class SearchTelemetry:
                         1 if cache_hit else 0,
                     ),
                 )
-            conn.close()
-        except Exception as e:
-            logger.error(f"Failed to record search telemetry: {e}")
+        except Exception as exc:
+            logger.error(f"Failed to record search telemetry: {exc}")
 
+    # -- reads -------------------------------------------------------------
     def get_stats(self) -> Dict[str, Any]:
-        """Calculates rolling statistics, percentiles, and sub-system latency analysis."""
+        """Percentiles and per-subsystem averages over the most recent window."""
+        conn = self._connection()
+        if conn is None:
+            return {"error": f"Telemetry database unavailable: {self.db_file}"}
+
         try:
-            conn = sqlite3.connect(self.db_file)
-            cursor = conn.cursor()
-            cursor.execute("""
+            rows: List[tuple] = conn.execute(
+                """
                 SELECT total_latency, fts_latency, vector_latency, graph_latency,
-                       embedding_latency, reranker_latency, candidate_count, result_count,
-                       is_error, cache_hit
+                       embedding_latency, reranker_latency, candidate_count,
+                       result_count, is_error, cache_hit
                 FROM search_metrics
-                """)
-            rows = cursor.fetchall()
-            conn.close()
-        except Exception as e:
-            logger.error(f"Failed to fetch search metrics: {e}")
-            return {"error": str(e)}
+                ORDER BY id DESC
+                LIMIT ?
+                """,
+                (self.window,),
+            ).fetchall()
+        except Exception as exc:
+            logger.error(f"Failed to fetch search metrics: {exc}")
+            return {"error": str(exc)}
 
         if not rows:
-            return {
-                "total_searches": 0,
-                "latency_p50": 0.0,
-                "latency_p95": 0.0,
-                "latency_p99": 0.0,
-                "avg_fts_latency": 0.0,
-                "avg_vector_latency": 0.0,
-                "avg_graph_latency": 0.0,
-                "avg_embedding_latency": 0.0,
-                "avg_reranker_latency": 0.0,
-                "avg_candidates": 0.0,
-                "avg_results": 0.0,
-                "error_rate": 0.0,
-                "cache_hit_rate": 0.0,
-            }
+            return dict(_EMPTY_STATS)
 
-        total_latencies = [r[0] for r in rows]
-        fts_latencies = [r[1] for r in rows]
-        vector_latencies = [r[2] for r in rows]
-        graph_latencies = [r[3] for r in rows]
-        embedding_latencies = [r[4] for r in rows]
-        reranker_latencies = [r[5] for r in rows]
-        candidate_counts = [r[6] for r in rows]
-        result_counts = [r[7] for r in rows]
-        errors = [r[8] for r in rows]
-        cache_hits = [r[9] for r in rows]
-
-        n = len(rows)
+        matrix = np.asarray(rows, dtype=np.float64)
+        totals = matrix[:, 0]
 
         return {
-            "total_searches": n,
-            "latency_p50": float(np.percentile(total_latencies, 50)),
-            "latency_p95": float(np.percentile(total_latencies, 95)),
-            "latency_p99": float(np.percentile(total_latencies, 99)),
-            "avg_total_latency": float(np.mean(total_latencies)),
-            "avg_fts_latency": float(np.mean(fts_latencies)),
-            "avg_vector_latency": float(np.mean(vector_latencies)),
-            "avg_graph_latency": float(np.mean(graph_latencies)),
-            "avg_embedding_latency": float(np.mean(embedding_latencies)),
-            "avg_reranker_latency": float(np.mean(reranker_latencies)),
-            "avg_candidates": float(np.mean(candidate_counts)),
-            "avg_results": float(np.mean(result_counts)),
-            "error_rate": float(sum(errors) / n),
-            "cache_hit_rate": float(sum(cache_hits) / n),
+            "total_searches": matrix.shape[0],
+            "latency_p50": float(np.percentile(totals, 50)),
+            "latency_p95": float(np.percentile(totals, 95)),
+            "latency_p99": float(np.percentile(totals, 99)),
+            "avg_total_latency": float(totals.mean()),
+            "avg_fts_latency": float(matrix[:, 1].mean()),
+            "avg_vector_latency": float(matrix[:, 2].mean()),
+            "avg_graph_latency": float(matrix[:, 3].mean()),
+            "avg_embedding_latency": float(matrix[:, 4].mean()),
+            "avg_reranker_latency": float(matrix[:, 5].mean()),
+            "avg_candidates": float(matrix[:, 6].mean()),
+            "avg_results": float(matrix[:, 7].mean()),
+            "error_rate": float(matrix[:, 8].mean()),
+            "cache_hit_rate": float(matrix[:, 9].mean()),
+            "window": self.window,
         }
