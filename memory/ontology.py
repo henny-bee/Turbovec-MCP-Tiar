@@ -1,7 +1,7 @@
 import os
 import json
 import logging
-from typing import Set, Dict, Any, List
+from typing import Any, Dict, Set
 from memory.errors import SearchError, ONTOLOGY_VALIDATION_FAILED
 
 logger = logging.getLogger(__name__)
@@ -42,6 +42,11 @@ DEFAULT_ONTOLOGY = {
         "CONNECTS_TO",
         "KNOWS",
         "WORKS_AT",
+        "LOCATED_IN",
+        "MEMBER_OF",
+        "OWNS",
+        "PART_OF",
+        "PARTNER_WITH",
     ],
 }
 
