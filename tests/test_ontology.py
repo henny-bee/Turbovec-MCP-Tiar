@@ -1,15 +1,19 @@
 """The ontology must cover everything the engine itself emits."""
 
-import pytest
+import json
+from pathlib import Path
 from unittest.mock import patch
 
 import numpy as np
+import pytest
 
 from extraction.patterns import RELATION_PATTERNS
 from memory.errors import SearchError
 from memory.ontology import DEFAULT_ONTOLOGY, OntologyManager
 from search.radar import _TYPE_RELATIONS
 from vector_db import VectorDB
+
+REPO_ROOT = Path(__file__).resolve().parent.parent
 
 
 def test_every_extracted_relation_type_is_registered():
@@ -26,11 +30,19 @@ def test_every_inferred_radar_relation_type_is_registered():
     assert emitted <= registered, sorted(emitted - registered)
 
 
-def test_shipped_ontology_file_matches_defaults(tmp_path):
-    """The repository's ontology.json must not lag behind DEFAULT_ONTOLOGY."""
-    shipped = OntologyManager("ontology.json")
-    assert set(DEFAULT_ONTOLOGY["relations"]) <= shipped.relations
-    assert set(DEFAULT_ONTOLOGY["entities"]) <= shipped.entities
+def test_shipped_ontology_file_matches_defaults():
+    """The repository's ontology.json must not lag behind DEFAULT_ONTOLOGY.
+
+    Read the file directly rather than through OntologyManager: the manager
+    writes a fresh default when the path is missing, which would make this
+    assertion compare defaults against defaults and always pass.
+    """
+    path = REPO_ROOT / "ontology.json"
+    assert path.exists(), f"ontology.json is missing from {REPO_ROOT}"
+    shipped = json.loads(path.read_text(encoding="utf-8"))
+
+    assert set(DEFAULT_ONTOLOGY["relations"]) <= set(shipped["relations"])
+    assert set(DEFAULT_ONTOLOGY["entities"]) <= set(shipped["entities"])
 
 
 def test_relation_validation_is_case_insensitive(tmp_path):
