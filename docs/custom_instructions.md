@@ -1,25 +1,52 @@
-# Turbovec MCP: Recommended Custom Instructions & System Rules
+# Custom Instructions
 
-To ensure your AI coding assistant makes proactive and flawless use of this advanced hybrid memory database without asking you for permission first, add the following guidelines to your editor's **Custom Instructions**, **System Rules**, or `.clinerules` file.
+Without a rule telling it to, an assistant will not search its memory before
+answering or write anything back. Paste the block below into your client's
+**Custom Instructions** / **System Rules** / `.clinerules`.
 
 ---
 
-## Custom Instructions Template
-
-Copy and paste the markdown block below directly into your AI Client (Cursor, Claude Desktop, Cline / Roo Code, Windsurf, Zoo Code, etc.):
+## The rules
 
 ```markdown
-# Long-Term Memory & Knowledge Graph System Instructions
-You have access to an enterprise-grade local Hybrid Graph-Vector Memory Server (Turbovec MCP). Use it proactively to read and write context across different chat sessions:
+You have a local hybrid graph-vector memory server (Turbovec MCP). Use it
+without being asked.
 
-1. At the beginning of a task, check for existing context by running `search_memory(query="[relevant topic]")`.
-2. Review active messages left by previous sessions using `get_bottles()`. If you accomplish a milestone that is valuable for future sessions, leave a message with `create_bottle()`.
-3. When the user explains an architectural decision, code pattern, custom requirement, or preferences, store it immediately:
-   - Use `create_entity()` to define core systems, components, or requirements. Node/Edge types must comply with ontology rules (e.g. entities: person, project, technology, decision, event, concept, file).
-   - Use `add_observation()` to attach notes, facts, and code guidelines to those entities.
-   - Use `create_relationship()` to model dependencies (e.g., `ComponentA` -> `depends_on` -> `ComponentB`).
-4. If documenting large files or external APIs, use `add_knowledge()` or `add_file_knowledge()`.
-5. When starting a development phase, initiate a session with `start_session()`. Record any core insights or breakthroughs with `record_breakthrough()`, and summarize accomplishments with `end_session()`.
-6. Proactively maintain memory structure. If you find related but disconnected entities, run `create_relationship()` to bridge them.
-7. Periodically monitor retrieval performance and database health with `search_stats()` or run on-demand reorganization using `run_librarian_cycle()`.
+**Before answering anything about this project**
+1. `search_memory(query="<topic>")` for existing context.
+2. `get_bottles()` for notes left by previous sessions.
+
+**When the user states something durable** — an architectural decision, a
+convention, a constraint, a preference — store it immediately:
+- `create_entity()` for the thing itself (person, project, technology,
+  decision, event, concept, file).
+- `add_observation()` for facts about it.
+- `create_relationship()` for how it connects, e.g. `api` depends_on `database`.
+- `add_knowledge()` or `add_file_knowledge()` for long documents and specs.
+
+**Around a unit of work**
+- `start_session()` when starting, `record_breakthrough()` for insights worth
+  keeping, `end_session(summary=...)` when finishing.
+- `create_bottle()` for anything the next session must know, especially
+  unfinished work.
+
+**Housekeeping** — occasionally, not every turn:
+- `create_relationship()` to connect entities you notice are related.
+- `run_librarian_cycle()` to cluster and deduplicate.
+- `search_stats()` to check retrieval health.
+
+Store durable facts, not conversation. Prefer one entity with several
+observations over many near-duplicate entities.
 ```
+
+---
+
+## Notes
+
+- **Relationship types are validated** against `ontology.json`; entity types are
+  not. Register new relationship types there before using them.
+- **Trim the rules if your assistant over-writes.** The housekeeping section is
+  the first thing to cut — the background daemon
+  (`BACKGROUND_DISCOVERY=true`) does that work anyway.
+- **Session tools are optional.** If you only want recall, keep the search and
+  store rules and drop the rest.

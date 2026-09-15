@@ -1,151 +1,142 @@
-# Turbovec MCP: Tools Reference Manual
+# Tools Reference
 
-This document provides a comprehensive, categorized reference for all **35 powerful MCP tools and prompts** exposed by the Turbovec MCP Server.
+35 tools and 2 prompts. Arguments are shown with their defaults; `project_id`
+defaults to `"default"` everywhere and scopes results to one workspace.
 
----
-
-## Unstructured Knowledge Tools
-
-These tools manage the semantic indexing of raw text documents or source code snippets using chunking and embedding operations under the vector indexing engine.
-
-- `add_knowledge(title: str, content: str)`:
-  - **Description**: Chunk, embed, and store unstructured documents or code snippet texts in the vector memory index.
-  - **Usage**: Use this to digest custom standards, local setup guides, API specs, or multi-line files.
-- `add_file_knowledge(file_path: str)`:
-  - **Description**: Reads a local file, chunks it, and indexes it for semantic search.
-  - **Usage**: Automatically reads and indexes files on disk.
-- `delete_knowledge(title_or_id: str)`:
-  - **Description**: Removes a document chunk from the index and database matching a specific title or ID.
-- `search_knowledge(query: str, top_k: int = 3)`:
-  - **Description**: Performs vector-similarity search over raw chunked text.
+- [Documents](#documents) · [Graph](#graph) · [Search](#search) · [Sessions](#sessions)
+- [Time travel](#time-travel) · [Discovery](#discovery) · [Lifecycle](#lifecycle)
+- [Bottles](#bottles) · [Maintenance](#maintenance) · [Prompts](#prompts)
 
 ---
 
-## Graph Memory Core CRUD Tools
+## Documents
 
-These tools interact with the structured entity nodes and relationship edges inside SQLite. Validates all entity types and edge types against your defined rules in `ontology.json`.
+Unstructured text: chunked, embedded, and searched by meaning. Use these for
+files, specs and long notes; use [Graph](#graph) for facts you want to link.
 
-- `create_entity(id: str, name: str, node_type: str, properties: dict = None, project_id: str = "default")`:
-  - **Description**: Creates a structured entity node in the graph.
-  - **Validation**: Enforces strict node-type checks (e.g. `person`, `project`, `technology`, `decision`, `event`, `concept`, `file`).
-- `add_observation(entity_id: str, content: str, project_id: str = "default")`:
-  - **Description**: Attaches a factual observation, take-away, or note to an existing entity and triggers immediate indexing.
-- `create_relationship(from_node_id: str, to_node_id: str, relationship_type: str, weight: float = 1.0, properties: dict = None, project_id: str = "default")`:
-  - **Description**: Creates a typed, weighted directed edge.
-  - **Validation**: Enforces domain-range rules defined in `ontology.json` (e.g. mapping standard phrasing like "lives in" to `LOCATED_IN`, "owns" to `OWNS`).
-- `delete_entity(id: str, project_id: str = "default")`:
-  - **Description**: Deletes an entity node from the graph, cascading deletions automatically to edges and mappings.
-- `delete_relationship(from_node_id: str, to_node_id: str, relationship_type: str, project_id: str = "default")`:
-  - **Description**: Removes a relationship edge from the database.
+| Tool | Description |
+| :--- | :--- |
+| `add_knowledge(title, content)` | Chunk, embed and store text. Also extracts entities and relationships into the graph. |
+| `add_file_knowledge(file_path)` | Same, reading `content` from a local file. Title is the filename. |
+| `search_knowledge(query, top_k=3)` | Vector-only search over chunks. Returns formatted text. |
+| `delete_knowledge(title_or_id)` | Delete every chunk matching a title or chunk id. |
 
 ---
 
-## Graph Exploration & Context Tools
+## Graph
 
-Retrieve rich sub-graph context around specific entities. Perfect for reconstructing code architectures or key system relations.
+Structured memory. Relationship types are validated against `ontology.json`.
 
-- `get_hologram(node_id: str, depth: int = 1)`:
-  - **Description**: Returns a complete context block containing the node's properties, all attached observations, and adjacent neighbors (ideal context formatting for LLMs).
-- `get_neighbors(node_id: str, depth: int = 1)`:
-  - **Description**: Returns a simple list of connected nodes starting from an anchor node.
-
----
-
-## Hybrid Search & Reranking
-
-- `search_memory(query: str, limit: int = 10, project_id: str = "default", channel_weights: dict = None)`:
-  - **Description**: Executes an enterprise hybrid (Vector + FTS5) search using **Reciprocal Rank Fusion (RRF)**, and optional CrossEncoder Reranking.
-  - **Parameters**:
-    - `channel_weights`: Dict defining custom weights for vector/lexical score balancing.
+| Tool | Description |
+| :--- | :--- |
+| `create_entity(id, name, node_type, properties=None, project_id)` | Create an entity node. `node_type` is free-form (`person`, `technology`, `decision`, …). |
+| `add_observation(entity_id, content, project_id)` | Attach a timestamped fact to an entity and reindex it. |
+| `create_relationship(from_node_id, to_node_id, relationship_type, weight=1.0, properties=None, project_id)` | Create a directed, weighted edge. Rejects unregistered `relationship_type`. |
+| `delete_entity(id, project_id)` | Delete a node; its edges, observations and vector cascade. |
+| `delete_relationship(from_node_id, to_node_id, relationship_type, project_id)` | Delete one edge. |
+| `get_hologram(node_id, depth=1)` | The node, its observations, and its `depth`-hop neighbourhood as nodes + edges. The richest context block for an LLM. |
+| `get_neighbors(node_id, depth=1)` | Same traversal, nodes only. |
 
 ---
 
-## Temporal Session & "Time-Travel"
+## Search
 
-Maintains chronological context, tracks development progress, and allows querying older graph snapshots.
+| Tool | Description |
+| :--- | :--- |
+| `search_memory(query, limit=10, project_id, channel_weights=None)` | Hybrid vector + FTS5 search fused with RRF, optionally reranked. The main retrieval tool. |
 
-- `start_session(session_id: str, name: str, properties: dict = None, project_id: str = "default")`:
-  - **Description**: Starts a temporal session, creating a session node and linking it to any prior closed session.
-- `end_session(session_id: str, summary: str, project_id: str = "default")`:
-  - **Description**: Closes a session, saving a summary markdown block and changing its status to closed.
-- `record_breakthrough(session_id: str, title: str, content: str, project_id: str = "default")`:
-  - **Description**: Records a learning breakthrough, linking it directly to the active session.
-- `point_in_time_query(as_of_iso_timestamp: str)`:
-  - **Description**: Returns the state of the memory graph as it existed at that specific ISO-8601 UTC timestamp.
-- `diff_knowledge_state(from_timestamp: str, to_timestamp: str)`:
-  - **Description**: Computes a deterministic delta between two points in time (added, removed, changed nodes/edges).
-- `query_timeline(entity: str = None, entity_type: str = None, start: str = None, end: str = None, order: str = "ASC", limit: int = 50, offset: int = 0)`:
-  - **Description**: Queries timeline events chronologically with filtering and pagination.
-- `get_temporal_neighbors(node_id: str, direction: str = "both", depth: int = 1)`:
-  - **Description**: Traverses chronological neighbors relative to an anchor node.
+`channel_weights` biases the two channels, e.g. `{"vector": 1.0, "lexical": 0.5}`.
+Set one to `0.0` to disable it: `{"vector": 0.0, "lexical": 1.0}` is exact
+keyword search. Archived entities are excluded. Each result carries `rrf_score`,
+its observations, and `rerank_score` when reranking is on.
 
 ---
 
-## Semantic Discovery & Background Workers
+## Sessions
 
-Manages autonomous background analysis to find connections between disconnected entities.
+Groups work into chronological units. Each new session links back to the
+previous one with `PRECEDED_BY`, forming a timeline of the project.
 
-- `semantic_radar(similarity_threshold: float = 0.7, project_id: str = "default", auto_create: bool = False)`:
-  - **Description**: Scans the graph to detect highly similar disconnected entities, suggesting missing edges.
-- `run_relationship_discovery(similarity_threshold: float = 0.7, project_id: str = "default", auto_create: bool = True)`:
-  - **Description**: Runs semantic radar discovery with automatic edge creation.
-- `get_background_discovery_status()`:
-  - **Description**: Returns background worker running health, interval, and settings.
-- `set_background_discovery(enabled: bool, interval_seconds: int = 300, similarity_threshold: float = 0.7)`:
-  - **Description**: Configures and manages background discovery.
+| Tool | Description |
+| :--- | :--- |
+| `start_session(session_id, name, properties=None, project_id)` | Open a session node and chain it to the previous one. |
+| `record_breakthrough(session_id, title, content, project_id)` | Record an insight, linked to the session with `BREAKTHROUGH_IN`. |
+| `end_session(session_id, summary, project_id)` | Close a session and store its summary. |
 
 ---
 
-## Advanced Parity & Lifecycle Tools
+## Time travel
 
-Provides maintenance commands to prevent performance degradation from clutter or stale historical knowledge.
+Every node, edge and observation is timestamped, so past states are
+reconstructable — nothing is overwritten in place.
 
-- `archive_entity(id: str, reason: str = "Unused/superseded")`:
-  - **Description**: Archives an entity (status = `ARCHIVED`), excluding it from active searches.
-- `restore_entity(id: str)`:
-  - **Description**: Restores an archived entity node back to active retrieval status.
-- `list_orphans()`:
-  - **Description**: Identifies and lists orphaned entity nodes (nodes with 0 connected edges).
-- `prune_stale(max_age_days: int, dry_run: bool = False)`:
-  - **Description**: Identifies stale or archived memories older than `max_age_days` and prunes them.
-
----
-
-## Inter-Session Provenance & Bottles
-
-Inter-session coordination tools to preserve developer notes or instructions across completely independent chat windows.
-
-- `create_bottle(message: str, priority: str = "medium", expires_at: str = None, author_session_id: str = None)`:
-  - **Description**: Leaves a persistent note/bottle for subsequent sessions to discover.
-- `get_bottles(include_acknowledged: bool = False)`:
-  - **Description**: Lists active and optionally acknowledged bottle notes.
-- `acknowledge_bottle(id: str)`:
-  - **Description**: Marks a bottle note as acknowledged/read.
+| Tool | Description |
+| :--- | :--- |
+| `point_in_time_query(as_of_iso_timestamp)` | The whole graph as it existed at an ISO-8601 UTC instant. |
+| `diff_knowledge_state(from_timestamp, to_timestamp)` | Deterministic delta between two instants: added, removed and changed nodes and edges. |
+| `query_timeline(entity=None, entity_type=None, start=None, end=None, order="ASC", limit=50, offset=0)` | Chronological event feed with filters and pagination. |
+| `get_temporal_neighbors(node_id, direction="both", depth=1)` | Neighbours that happened `before`, `after`, or either side of an anchor node. |
 
 ---
 
-## Telemetry, Analytics & Autonomous Librarian
+## Discovery
 
-Deep system metrics and automated housekeeping.
+Finds entities that are semantically close but unconnected in the graph — the
+links you would have drawn yourself if you had remembered both notes.
 
-- `search_stats()`:
-  - **Description**: Calculates rolling search statistics, latencies per subsystem, percentiles, error rates, and cache hits.
-- `analyze_graph()`:
-  - **Description**: Evaluates graph topologies, PageRank, degree centrality, connected components, and LPA communities.
-- `run_librarian_cycle()`:
-  - **Description**: Triggers one autonomous librarian cycle immediately (clustering, duplicate detection, and concept synthesis).
-- `clear_memory()`:
-  - **Description**: Wipes the index, metadata, and database files on disk, starting fresh.
-- `optimize_memory()`:
-  - **Description**: Compacts database storage, removes soft-deleted chunks, and optimizes the vector index.
+| Tool | Description |
+| :--- | :--- |
+| `semantic_radar(similarity_threshold=0.7, project_id, auto_create=False)` | Report similar-but-unlinked pairs with a suggested relationship type. |
+| `run_relationship_discovery(similarity_threshold=0.7, project_id, auto_create=True)` | Same scan, creating the edges by default. |
+| `get_background_discovery_status()` | Whether the daemon is running, plus its interval and threshold. |
+| `set_background_discovery(enabled, interval_seconds=300, similarity_threshold=0.7)` | Start, stop or reconfigure the daemon at runtime. |
+
+A lower `similarity_threshold` finds more links and more false positives. Pairs
+already connected by any path are skipped.
 
 ---
 
-## Registered MCP Prompts
+## Lifecycle
 
-Convenient, ready-to-use LLM system prompts pre-configured for specialized developer operations.
+Keeps retrieval quality from decaying as the graph grows.
 
-- `qna_with_context(query: str)`:
-  - **Description**: Formulates an optimized Q&A prompt pre-injecting the top 5 relevant memory chunks from the database.
-- `review_codebase()`:
-  - **Description**: Invokes a system context role as a Senior Software Engineer to review codebase snippets.
+| Tool | Description |
+| :--- | :--- |
+| `archive_entity(id, reason="Unused/superseded")` | Mark `ARCHIVED` — kept and restorable, but excluded from search. |
+| `restore_entity(id)` | Return an archived entity to `ACTIVE`. |
+| `list_orphans()` | Entities with no edges at all — usually notes that were never linked. |
+| `prune_stale(max_age_days, dry_run=False)` | Permanently delete stale/archived nodes older than N days. **Run with `dry_run=True` first** — deletion cascades to edges and observations. |
+
+---
+
+## Bottles
+
+Messages from one session to the next, independent of the graph. Use them for
+hand-offs ("migration half-done, see X") rather than durable facts.
+
+| Tool | Description |
+| :--- | :--- |
+| `create_bottle(message, priority="medium", expires_at=None, author_session_id=None)` | Leave a note. `expires_at` is an ISO-8601 timestamp. |
+| `get_bottles(include_acknowledged=False)` | List unexpired notes. |
+| `acknowledge_bottle(id)` | Mark one as read so it stops surfacing. |
+
+---
+
+## Maintenance
+
+| Tool | Description |
+| :--- | :--- |
+| `search_stats()` | Latency percentiles (p50/p95/p99) per subsystem, error rate, embedding cache hit rate. |
+| `analyze_graph()` | Connected components, LPA communities, degree centrality and PageRank; the 20 most central nodes. |
+| `run_librarian_cycle()` | One reorganisation pass now: cluster, flag duplicates, discover links, synthesise concepts. |
+| `optimize_memory()` | Flush and compact metadata and the vector index. |
+| `clear_memory()` | **Deletes everything** — database, index and metadata files. Not reversible. |
+
+---
+
+## Prompts
+
+| Prompt | Description |
+| :--- | :--- |
+| `qna_with_context(query)` | A Q&A system prompt with the top 5 matching memory chunks pre-injected. |
+| `review_codebase()` | A senior-engineer code review system prompt. |
