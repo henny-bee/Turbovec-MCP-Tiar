@@ -1,8 +1,5 @@
-import os
 import json
-import sqlite3
 import pytest
-import numpy as np
 from unittest.mock import patch, MagicMock
 
 from vector_db import VectorDB
@@ -14,19 +11,6 @@ def temp_files(tmp_path):
     index_file = tmp_path / "index.tvim"
     sqlite_db_file = tmp_path / "memory.db"
     return str(metadata_file), str(index_file), str(sqlite_db_file)
-
-
-@pytest.fixture
-def mock_sentence_transformer():
-    with patch("embeddings.minilm.SentenceTransformer") as MockST:
-        instance = MockST.return_value
-
-        def mock_encode(text, **kwargs):
-            np.random.seed(abs(hash(text)) % (2**32))
-            return np.random.rand(384).astype(np.float32)
-
-        instance.encode.side_effect = mock_encode
-        yield instance
 
 
 @pytest.fixture

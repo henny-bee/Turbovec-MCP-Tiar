@@ -15,22 +15,6 @@ def temp_files(tmp_path):
 
 
 @pytest.fixture
-def mock_sentence_transformer():
-    with patch("embeddings.minilm.SentenceTransformer") as MockST:
-        instance = MockST.return_value
-
-        def mock_encode(text, **kwargs):
-            # We create a deterministic vector based on string hash
-            # If the text is exactly a specific test query, make it close to a test document
-            # But normally we just want some floats
-            np.random.seed(abs(hash(text)) % (2**32))
-            return np.random.rand(384).astype(np.float32)
-
-        instance.encode.side_effect = mock_encode
-        yield instance
-
-
-@pytest.fixture
 def vector_db(temp_files, mock_sentence_transformer):
     metadata_file, index_file = temp_files
     db = VectorDB(dimension=384, metadata_file=metadata_file, index_file=index_file)
@@ -99,10 +83,7 @@ def test_add_knowledge_rejects_empty_input(vector_db):
 def test_add_knowledge_does_not_mutate_index_when_encoding_fails(
     vector_db, mock_sentence_transformer
 ):
-    mock_sentence_transformer.encode.side_effect = [
-        np.ones(384, dtype=np.float32),
-        RuntimeError("encoding failed"),
-    ]
+    mock_sentence_transformer.encode.side_effect = RuntimeError("encoding failed")
 
     result = vector_db.add_knowledge("Doc", "A" * 1200)
 
@@ -111,9 +92,9 @@ def test_add_knowledge_does_not_mutate_index_when_encoding_fails(
     assert len(vector_db.index) == 0
 
 
-def test_search_knowledge(vector_db, mock_sentence_transformer):
+def test_search_knowledge(vector_db, mock_sentence_transformer, make_encoder):
     # Instead of random vectors, let's control the encode function specifically for search test
-    def controlled_encode(text, **kwargs):
+    def encode_one(text):
         vec = np.zeros(384, dtype=np.float32)
         if "apple" in text.lower():
             vec[0] = 1.0
@@ -123,7 +104,7 @@ def test_search_knowledge(vector_db, mock_sentence_transformer):
             vec[2] = 1.0
         return vec
 
-    mock_sentence_transformer.encode.side_effect = controlled_encode
+    mock_sentence_transformer.encode.side_effect = make_encoder(encode_one)
 
     vector_db.add_knowledge("Doc 1", "I like apple.")
     vector_db.add_knowledge("Doc 2", "I like banana.")
@@ -201,7 +182,7 @@ def test_load_storage_rebuilds_mismatched_index(temp_files, mock_sentence_transf
 
     empty_index = MagicMock()
     empty_index.__len__.return_value = 0
-    with patch("vector_db.turbovec.IdMapIndex") as mock_index_type:
+    with patch("storage.vector_index.turbovec.IdMapIndex") as mock_index_type:
         rebuilt_index = MagicMock()
         rebuilt_index.__len__.return_value = 0
         mock_index_type.return_value = rebuilt_index

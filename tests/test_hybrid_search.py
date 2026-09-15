@@ -1,9 +1,6 @@
-import os
-import json
-import sqlite3
 import pytest
 import numpy as np
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
 
 from vector_db import VectorDB
 
@@ -17,11 +14,12 @@ def temp_files(tmp_path):
 
 
 @pytest.fixture
-def mock_sentence_transformer():
+def mock_sentence_transformer(make_encoder):
+    """Keyword-steered vectors so RRF ranking is predictable."""
     with patch("embeddings.minilm.SentenceTransformer") as MockST:
         instance = MockST.return_value
 
-        def controlled_encode(text, **kwargs):
+        def encode_one(text):
             vec = np.zeros(384, dtype=np.float32)
             # Control the vector based on keywords in the text/query
             text_lower = text.lower()
@@ -37,7 +35,7 @@ def mock_sentence_transformer():
                 return np.random.rand(384).astype(np.float32)
             return vec
 
-        instance.encode.side_effect = controlled_encode
+        instance.encode.side_effect = make_encoder(encode_one)
         yield instance
 
 
