@@ -1,4 +1,7 @@
-fastmcp
+# The server is built on the FastMCP API bundled with the official MCP SDK
+# (`mcp.server.fastmcp`). mcp 2.x renamed it to MCPServer and changed other
+# APIs, so the major version is capped until that migration is done.
+mcp>=1.2,<2
 sentence-transformers
 numpy
 turbovec
