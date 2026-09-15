@@ -12,6 +12,10 @@ __pycache__/
 # Turbovec Local Data (Do not commit your personal memory!)
 metadata.json
 index.bin
+index.tvim
+memory.db
+memory.db-wal
+memory.db-shm
 server.log
 
 # Editor Settings

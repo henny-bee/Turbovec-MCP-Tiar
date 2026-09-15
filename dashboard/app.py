@@ -1,7 +1,6 @@
 import os
 import json
 import sqlite3
-import datetime
 import pandas as pd
 
 try:
@@ -613,8 +612,6 @@ else:
 
         except Exception as e:
             st.error(f"Error loading topology data: {e}")
-            import traceback
-
             st.exception(e)
 
     # Tab 3: Librarian Cycles

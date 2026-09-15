@@ -1,17 +1,29 @@
 FROM python:3.10-slim
 
-# Set up the working directory
 WORKDIR /app
 
-# Ensure python output is unbuffered
-ENV PYTHONUNBUFFERED=1
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PIP_NO_CACHE_DIR=1
 
-# Copy and install requirements
+# Dependencies first so the layer is cached across source changes.
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy the application files
-COPY main.py vector_db.py tools.py ./
+# Application packages. Data files (memory.db, index.tvim, metadata.json) are
+# written to the working directory at runtime, not baked into the image.
+COPY main.py ontology.json ./
+COPY core/ ./core/
+COPY storage/ ./storage/
+COPY graph/ ./graph/
+COPY memory/ ./memory/
+COPY search/ ./search/
+COPY extraction/ ./extraction/
+COPY embeddings/ ./embeddings/
+COPY reranking/ ./reranking/
+COPY telemetry/ ./telemetry/
+COPY librarian/ ./librarian/
+COPY tools/ ./tools/
+COPY vector_db.py ./
 
-# Set the entrypoint to run the main server script
 ENTRYPOINT ["python", "main.py"]
